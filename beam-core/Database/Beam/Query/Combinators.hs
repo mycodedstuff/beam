@@ -1,6 +1,5 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                  #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE CPP #-}
 
 module Database.Beam.Query.Combinators
     ( -- * Various SQL functions and constructs
@@ -31,7 +30,7 @@ module Database.Beam.Query.Combinators
     , related_, relatedBy_, relatedBy_'
     , leftJoin_, leftJoin_'
     , perhaps_, outerJoin_, outerJoin_'
-    , subselect_, references_
+    , subselect_, references_, references_'
 
     , nub_
 
@@ -66,28 +65,28 @@ module Database.Beam.Query.Combinators
     , orderBy_, asc_, desc_, nullsFirst_, nullsLast_
     ) where
 
-import Database.Beam.Backend.Types
-import Database.Beam.Backend.SQL
+import           Database.Beam.Backend.SQL
+import           Database.Beam.Backend.Types
 
-import Database.Beam.Query.Internal
-import Database.Beam.Query.Ord
-import Database.Beam.Query.Operator
-import Database.Beam.Query.Types
+import           Database.Beam.Query.Internal
+import           Database.Beam.Query.Operator
+import           Database.Beam.Query.Ord
+import           Database.Beam.Query.Types
 
-import Database.Beam.Schema.Tables
+import           Database.Beam.Schema.Tables
 
-import Control.Monad.Identity
-import Control.Monad.Free
-import Control.Applicative
+import           Control.Applicative
+import           Control.Monad.Free
+import           Control.Monad.Identity
 
 #if !MIN_VERSION_base(4, 11, 0)
-import Control.Monad.Writer hiding ((<>))
-import Data.Semigroup
+import           Control.Monad.Writer         hiding ((<>))
+import           Data.Semigroup
 #endif
 
-import Data.Maybe
-import Data.Proxy
-import Data.Time (LocalTime)
+import           Data.Maybe
+import           Data.Proxy
+import           Data.Time                    (LocalTime)
 
 -- | Introduce all entries of a table into the 'Q' monad
 all_ :: ( Database be db, BeamSqlBackend be )
@@ -316,6 +315,11 @@ references_ :: ( Table t, BeamSqlBackend be
             => PrimaryKey t (QGenExpr ctxt be s) -> t (QGenExpr ctxt be s) -> QGenExpr ctxt be s Bool
 references_ fk tbl = fk ==. pk tbl
 
+references_' :: ( Table t, BeamSqlBackend be
+               , HasTableEquality be (PrimaryKey t) )
+            => PrimaryKey t (QGenExpr ctxt be s) -> t (QGenExpr ctxt be s) -> QGenExpr ctxt be s SqlBool
+references_' fk tbl = fk ==?. pk tbl
+
 -- | Only return distinct values from a query
 nub_ :: ( BeamSqlBackend be, Projectible be r )
      => Q be db s r -> Q be db s r
@@ -415,7 +419,7 @@ allE es = fromMaybe (QExpr (pure (valueE (sqlValueSyntax True)))) $
 
 -- | Extract an expression representing the current (non-UPDATEd) value of a 'QField'
 current_ :: BeamSqlBackend be => QField s ty -> QExpr be s ty
-current_ (QField False _ nm) = QExpr (pure (fieldE (unqualifiedField nm)))
+current_ (QField False _ nm)  = QExpr (pure (fieldE (unqualifiedField nm)))
 current_ (QField True tbl nm) = QExpr (pure (fieldE (qualifiedField tbl nm)))
 
 infix 4 <-.
