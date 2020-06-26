@@ -179,8 +179,8 @@ runPgRowReader conn rowIdx res fields (FromBackendRowM readRow) =
 
     finish x _ _ _ = pure (Right x)
 
-withPgDebug :: (String -> IO ()) -> Pg.Connection -> Pg a -> IO (Either BeamRowReadError a)
-withPgDebug dbg conn (Pg action) =
+withPgDebug :: Bool -> (String -> IO ()) -> Pg.Connection -> Pg a -> IO (Either BeamRowReadError a)
+withPgDebug useStreaming dbg conn (Pg action) =
   let finish x = pure (Right x)
       step (PgLiftIO io next) = io >>= next
       step (PgLiftWithHandle withConn next) = withConn conn >>= next
@@ -201,7 +201,11 @@ withPgDebug dbg conn (Pg action) =
                    finishUp (PgStreamContinue next') = next' Nothing >>= finishUp
 
                    columnCount = fromIntegral $ valuesNeeded (Proxy @Postgres) (Proxy @x)
-               in Pg.foldWith_ (Pg.RP (put columnCount >> ask)) conn (Pg.Query query) (PgStreamContinue nextStream) runConsumer >>= finishUp
+               in if useStreaming
+                     then Pg.foldWith_ (Pg.RP (put columnCount >> ask)) conn (Pg.Query query) (PgStreamContinue nextStream) runConsumer >>= finishUp
+                     else
+                       do resp <- Pg.queryWith_ (Pg.RP (put columnCount >> ask)) conn (Pg.Query query)
+                          foldM runConsumer (PgStreamContinue nextStream) resp >>= finishUp
       step (PgRunReturning (PgCommandSyntax PgCommandTypeDataUpdateReturning syntax) mkProcess next) =
         do query <- pgRenderSyntax conn syntax
            dbg (T.unpack (decodeUtf8 query))
@@ -301,10 +305,18 @@ liftIOWithHandle f = liftF (PgLiftWithHandle f id)
 
 runBeamPostgresDebug :: (String -> IO ()) -> Pg.Connection -> Pg a -> IO a
 runBeamPostgresDebug dbg conn action =
-    withPgDebug dbg conn action >>= either throwIO pure
+    withPgDebug False dbg conn action >>= either throwIO pure
 
 runBeamPostgres :: Pg.Connection -> Pg a -> IO a
 runBeamPostgres = runBeamPostgresDebug (\_ -> pure ())
+
+runBeamPostgresStreamingDebug :: (String -> IO ()) -> Pg.Connection -> Pg a -> IO a
+runBeamPostgresStreamingDebug dbg conn action =
+    withPgDebug True dbg conn action >>= either throwIO pure
+
+-- | Like 'runBeamPostgres', but uses streaming methods with SQL cursors inside.
+runBeamPostgresStreaming :: Pg.Connection -> Pg a -> IO a
+runBeamPostgresStreaming = runBeamPostgresStreamingDebug (\_ -> pure ())
 
 instance MonadBeam Postgres Pg where
     runReturningMany cmd consume =
