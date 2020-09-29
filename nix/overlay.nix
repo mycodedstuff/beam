@@ -47,10 +47,7 @@ super.eulerBuild.mkEulerHaskellOverlay self super
         };
 
       interpolate = self.eulerBuild.fastBuildExternal {
-        drv = hsuper.interpolate.override {
-          haskell-src-exts = hself.haskell-src-exts;
-          haskell-src-meta = hself.haskell-src-meta;
-        };
+        drv = hsuper.interpolate;
       };
 
       beam-core = self.eulerBuild.fastBuildExternal {
