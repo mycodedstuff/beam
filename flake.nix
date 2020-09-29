@@ -22,6 +22,7 @@
            inherit beam-migrate-cli;
            inherit beam-postgres;
            inherit beam-sqlite;
+           inherit interpolate;
           };
 
           defaultPackage = pkgs.eulerHaskellPackages.beam-core;
