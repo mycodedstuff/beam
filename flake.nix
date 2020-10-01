@@ -3,6 +3,7 @@
 
   inputs.flake-utils.url = github:numtide/flake-utils;
   inputs.euler-build.url = flake:euler-build/wip;
+  inputs.euler-build.inputs.flake-utils.follows = "flake-utils";
 
   outputs = { self, euler-build, flake-utils }:
     {
