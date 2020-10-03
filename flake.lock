@@ -9,11 +9,8 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1601663974,
-        "narHash": "sha256-rebbNOBaTipSyEpImelgkcDvoPkScJmOIquW1tKziAQ=",
-        "ref": "wip",
-        "rev": "02fd8913f61747a525d268dc827a25801f71d20a",
-        "revCount": 6,
+        "lastModified": 1601666133,
+        "narHash": "sha256-i6AkKQMdwIl5ysKYeJ+0dZPIN0YpGSWz6OivkYuEbqg=",
         "type": "git",
         "url": "file:///home/aske/work/euler/euler-build"
       },
