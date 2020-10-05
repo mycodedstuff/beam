@@ -41,8 +41,10 @@
         "beam-postgres"
         "beam-sqlite"
       ];
-      overlayPath = ./nix/overlay.nix;
+      overlayPath = "./nix/overlay.nix";
       shellToolsPath = ./shell-tools.nix;
+      # configPath = ./confix.nix; # TODO: in euler-build
+      # if exists then ... else generate default exports
       inputs = flakeInputs;
     };
 }
