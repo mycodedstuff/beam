@@ -7,11 +7,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1602098089,
-        "narHash": "sha256-a5Y8CfklG7ag+5Ip0H/gnM56wlX5wxayyct9I6xHUkM=",
+        "lastModified": 1602113026,
+        "narHash": "sha256-60g99qiucoWYOziJjF0Mlgai272JIFBs971EsTaVrKQ=",
         "ref": "wip",
-        "rev": "7f56d07baf464015f0888d50b7ab4771aeb033b0",
-        "revCount": 12,
+        "rev": "eae3a9f3cc971259d2eed779fdc4b259380e3cc7",
+        "revCount": 15,
         "type": "git",
         "url": "ssh://git@bitbucket.com/juspay/euler-build"
       },
