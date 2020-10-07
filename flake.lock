@@ -2,31 +2,31 @@
   "nodes": {
     "euler-build": {
       "inputs": {
-        "flake-utils": [
-          "flake-utils"
-        ],
+        "flake-utils": "flake-utils",
         "nix-inclusive": "nix-inclusive",
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1601938265,
-        "narHash": "sha256-40u3KDVtwWbGoVmEOjjYb47yGHggrugFPwZA73xnz10=",
+        "lastModified": 1602098089,
+        "narHash": "sha256-a5Y8CfklG7ag+5Ip0H/gnM56wlX5wxayyct9I6xHUkM=",
+        "ref": "wip",
+        "rev": "7f56d07baf464015f0888d50b7ab4771aeb033b0",
+        "revCount": 12,
         "type": "git",
-        "url": "file:///home/aske/work/euler/euler-build"
+        "url": "ssh://git@bitbucket.com/juspay/euler-build"
       },
       "original": {
         "id": "euler-build",
-        "ref": "wip",
         "type": "indirect"
       }
     },
     "flake-utils": {
       "locked": {
-        "lastModified": 1601282935,
-        "narHash": "sha256-WQAFV6sGGQxrRs3a+/Yj9xUYvhTpukQJIcMbIi7LCJ4=",
+        "lastModified": 1600209923,
+        "narHash": "sha256-zoOWauTliFEjI++esk6Jzk7QO5EKpddWXQm9yQK24iM=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "588973065fce51f4763287f0fda87a174d78bf48",
+        "rev": "3cd06d3c1df6879c9e41cb2c33113df10566c760",
         "type": "github"
       },
       "original": {
@@ -72,8 +72,7 @@
     },
     "root": {
       "inputs": {
-        "euler-build": "euler-build",
-        "flake-utils": "flake-utils"
+        "euler-build": "euler-build"
       }
     },
     "stdlib": {
