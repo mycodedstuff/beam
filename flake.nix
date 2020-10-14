@@ -1,5 +1,5 @@
 {
-  description = "description here TODO from config";
+  description = "beam libraries";
 
   inputs = {
   };
