@@ -78,7 +78,7 @@ library
   default-extensions:  ScopedTypeVariables, OverloadedStrings, GADTs, RecursiveDo, FlexibleInstances, FlexibleContexts, TypeFamilies,
                        GeneralizedNewtypeDeriving, RankNTypes, TupleSections, ConstraintKinds, StandaloneDeriving, TypeOperators,
                        DefaultSignatures, KindSignatures, MultiParamTypeClasses, DeriveGeneric, DeriveFunctor, DeriveDataTypeable,
-                       TypeApplications, FunctionalDependencies, DataKinds, BangPatterns, InstanceSigs
+                       TypeApplications, FunctionalDependencies, DataKinds, BangPatterns, InstanceSigs, TypeFamilyDependencies
   ghc-options:         -Wall -O3
   if impl(ghc >= 8.8)
     ghc-options: -Wcompat
