@@ -434,7 +434,13 @@ instance IsSql92UpdateSyntax PgUpdateSyntax where
        fields ->
          emit " SET " <>
          pgSepBy (emit ", ") (map (\(field, val) -> fromPgFieldName field <> emit "=" <> fromPgExpression val) fields)) <>
-    maybe mempty (\where_ -> emit " WHERE " <> fromPgExpression where_) where_
+    maybe mempty (\where_ -> emit " WHERE " <> fromPgExpression where_) where_ <>
+    (emit " @JUSPAY@SYNTAX {") <>
+    (emit " table: " <> fromPgTableName tbl) <>
+    (emit ", query: UPDATE") <>
+    maybe mempty (\where_ -> emit ", where : " <> fromPgExpression where_) where_ <>
+    (emit ", set: " <> pgSepBy (emit ", ") (map (\(field, val) -> fromPgFieldName field <> emit "=" <> fromPgExpression val) fields)) <>
+    (emit "}")
 
 instance IsSql92DeleteSyntax PgDeleteSyntax where
   type Sql92DeleteExpressionSyntax PgDeleteSyntax = PgExpressionSyntax
@@ -444,7 +450,12 @@ instance IsSql92DeleteSyntax PgDeleteSyntax where
     PgDeleteSyntax $
     emit "DELETE FROM " <> fromPgTableName tbl <>
     maybe mempty (\alias_ -> emit " AS " <> pgQuotedIdentifier alias_) alias <>
-    maybe mempty (\where_ -> emit " WHERE " <> fromPgExpression where_) where_
+    maybe mempty (\where_ -> emit " WHERE " <> fromPgExpression where_) where_ <>
+    (emit " @JUSPAY@SYNTAX {") <>
+    (emit " table: " <> fromPgTableName tbl) <>
+    (emit ", query: DELETE") <>
+    maybe mempty (\where_ -> emit ", where : " <> fromPgExpression where_) where_ <>
+    (emit "}")
 
   deleteSupportsAlias _ = True
 
@@ -471,7 +482,12 @@ instance IsSql92SelectTableSyntax PgSelectTableSyntax where
     (maybe mempty (emit " FROM " <> ) (coerce from)) <>
     (maybe mempty (emit " WHERE " <>) (coerce where_)) <>
     (maybe mempty (emit " GROUP BY " <>) (coerce grouping)) <>
-    (maybe mempty (emit " HAVING " <>) (coerce having))
+    (maybe mempty (emit " HAVING " <>) (coerce having)) <>
+    (emit " @JUSPAY@SYNTAX {") <>
+    (maybe mempty (emit " table : " <> ) (coerce from)) <>
+    (emit ", query: SELECT") <>
+    (maybe mempty (emit ", where : " <>) (coerce where_)) <>
+    (emit "}")
 
   unionTables all = pgTableOp (if all then "UNION ALL" else "UNION")
   intersectTables all = pgTableOp (if all then "INTERSECT ALL" else "INTERSECT")
@@ -983,7 +999,11 @@ instance IsSql92InsertSyntax PgInsertSyntax where
       PgInsertSyntax $
       emit "INSERT INTO " <> fromPgTableName tblName <> emit "(" <>
       pgSepBy (emit ", ") (map pgQuotedIdentifier fields) <>
-      emit ") " <> fromPgInsertValues values
+      emit ") " <> fromPgInsertValues values <>
+      (emit " @JUSPAY@SYNTAX {") <>
+      (emit " table: " <> fromPgTableName tblName) <>
+      (emit ", query: INSERT") <>
+      (emit "}")
 
 instance IsSql92InsertValuesSyntax PgInsertValuesSyntax where
   type Sql92InsertValuesExpressionSyntax PgInsertValuesSyntax = PgExpressionSyntax

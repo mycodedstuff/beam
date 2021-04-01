@@ -64,9 +64,9 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Maybe (listToMaybe, fromMaybe, fromJust)
 import           Data.Proxy
 import           Data.String
-import           Data.Text (Text)
+import           Data.Text (Text, splitOn)
 import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8)
+import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import           Data.Typeable (cast)
 #if !MIN_VERSION_base(4, 11, 0)
 import           Data.Semigroup
@@ -191,7 +191,10 @@ withPgDebug dbg conn (Pg action) =
       step (PgRunReturning (PgCommandSyntax PgCommandTypeQuery syntax)
                            (mkProcess :: Pg (Maybe x) -> Pg a')
                            next) =
-        do query <- pgRenderSyntax conn syntax
+        do
+           query' <- pgRenderSyntax conn syntax
+           let (q : x : []) = splitOn " @JUSPAY@SYNTAX " $ decodeUtf8 query'
+           let query = encodeUtf8 q
            let Pg process = mkProcess (Pg (liftF (PgFetchNext id)))
            action' <- runF process finishProcess stepProcess Nothing
            (res, extime) <-
@@ -211,17 +214,25 @@ withPgDebug dbg conn (Pg action) =
                       columnCount = fromIntegral $ valuesNeeded (Proxy @Postgres) (Proxy @x)
                   resp <- Pg.queryWith_ (Pg.RP (put columnCount >> ask)) conn (Pg.Query query)
                   foldM runConsumer (PgStreamContinue nextStream) resp >>= finishUp
-           when (extime /= Nothing) $ dbg (decodeUtf8 query <> " Executed in: " <> T.pack (show ((nsec $ fromJust extime) `div` 1000000)) <> " ms ")
-           when (extime == Nothing) $ dbg (decodeUtf8 query)
+           when (extime /= Nothing) $ dbg (x <> " Executed in: " <> T.pack (show ((nsec $ fromJust extime) `div` 1000000)) <> " ms ")
+           when (extime == Nothing) $ dbg (x)
            return res
       step (PgRunReturning (PgCommandSyntax PgCommandTypeDataUpdateReturning syntax) mkProcess next) =
-        do query <- pgRenderSyntax conn syntax
-
+        do
+           query' <- decodeUtf8 <$> pgRenderSyntax conn syntax
+           let (query, x) =
+                 if T.isInfixOf "@JUSPAY@SYNTAX" query'
+                    then
+                      let (q : q' : []) = splitOn " @JUSPAY@SYNTAX " query'
+                          (x : x' : []) = splitOn "RETURNING" q'
+                          query = q <> " RETURNING " <> x'
+                      in (query, x)
+                    else (query', query')
            start <- getTime Monotonic
-           res <- Pg.exec conn query
+           res <- Pg.exec conn (encodeUtf8 query)
            end <- getTime Monotonic
            let extime = end - start
-           dbg (decodeUtf8 query <> " Executed in: " <> T.pack (show ((nsec extime) `div` 1000000)) <> " ms ")
+           dbg (x <> " Executed in: " <> T.pack (show ((nsec extime) `div` 1000000)) <> " ms ")
            sts <- Pg.resultStatus res
            case sts of
              Pg.TuplesOk -> do
@@ -230,12 +241,15 @@ withPgDebug dbg conn (Pg action) =
              _ -> Pg.throwResultError "No tuples returned to Postgres update/insert returning"
                                       res sts
       step (PgRunReturning (PgCommandSyntax _ syntax) mkProcess next) =
-        do query <- pgRenderSyntax conn syntax
+        do
+           query' <- pgRenderSyntax conn syntax
+           let (q : x : []) = splitOn " @JUSPAY@SYNTAX " $ decodeUtf8 query'
+           let query = encodeUtf8 q
            start <- getTime Monotonic
            _ <- Pg.execute_ conn (Pg.Query query)
            end <- getTime Monotonic
            let extime = end - start
-           dbg (decodeUtf8 query <> " Executed in: " <> T.pack (show ((nsec extime) `div` 1000000)) <> " ms ")
+           dbg (x <> " Executed in: " <> T.pack (show ((nsec extime) `div` 1000000)) <> " ms ")
            let Pg process = mkProcess (Pg (liftF (PgFetchNext id)))
            runF process next stepReturningNone
 
