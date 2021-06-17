@@ -204,7 +204,10 @@ withPgDebug dbg conn (Pg action) =
                 PgStreamDone (Left err) -> pure (Left err, Nothing)
                 PgStreamContinue nextStream -> do
                   start <- getTime Monotonic
-                  let finishUp (PgStreamDone (Right x)) = (\x y -> (x, Just $ y - start )) <$> next x <*> getTime Monotonic
+                  let finishUp (PgStreamDone (Right x)) = do
+                            output <- next x
+                            end <- getTime Monotonic
+                            pure (output, Just $ end - start)
                       finishUp (PgStreamDone (Left err)) = pure (Left err, Nothing)
                       finishUp (PgStreamContinue next') = next' Nothing >>= finishUp
 
