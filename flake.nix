@@ -1,28 +1,27 @@
 {
-  description = "beam libraries";
-
   inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    haskell-flake.url = "github:srid/haskell-flake";
   };
 
-  outputs = flakeInputs@{ self, euler-build, ... }:
-    euler-build.mkEulerFlake {
-      overlayPath = ./nix/overlay.nix;
-      mkConfig = { nixpkgs }: {
-        flakeName = "beam";
-        defaultPackageName = "beam-core";
-        exportPackages = [
-          "beam-core"
-          "beam-migrate"
-          "beam-migrate-cli"
-          "beam-postgres"
-          "beam-sqlite"
-        ];
-        shellTools = with nixpkgs; [
-          # haskellPackages.cabal-fmt
-        ];
-        # shellAttrs = {
-        # };
+  outputs = inputs@{ self, nixpkgs, flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } ({ withSystem, ... }: {
+      systems = nixpkgs.lib.systems.flakeExposed;
+      imports = [
+        inputs.haskell-flake.flakeModule
+      ];
+      perSystem = { self', pkgs, lib, config, ... }: {
+        haskellProjects.default = {
+          projectFlakeName = "beam";
+          basePackages = pkgs.haskell.packages.ghc927;
+          autoWire = ["packages" "checks" "devShells" "apps"];
+          settings = {
+            pretty-simple = {
+              check = false;
+            };
+          };
+        };
       };
-      inputs = flakeInputs;
-    };
-}
+    });
+}  

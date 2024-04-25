@@ -4,7 +4,12 @@ module Database.Beam.Schema.Lenses
     ( tableLenses
     , TableLens(..)
 
-    , dbLenses ) where
+    , dbLenses
+
+    -- * Exported so we can override defaults
+    , GTableLenses(..)
+    , GDatabaseLenses(..)
+    ) where
 
 import Database.Beam.Schema.Tables
 
@@ -13,10 +18,11 @@ import Control.Monad.Identity
 import Data.Proxy
 
 import GHC.Generics
+import GHC.Types (Type)
 
 import Lens.Micro hiding (to)
 
-class GTableLenses t (m :: * -> *) a (lensType :: * -> *) where
+class GTableLenses t (m :: Type -> Type) a (lensType :: Type -> Type) where
     gTableLenses :: Proxy a -> Lens' (t m) (a p) -> lensType ()
 instance GTableLenses t m a al => GTableLenses t m (M1 s d a) (M1 s d al) where
     gTableLenses (Proxy :: Proxy (M1 s d a)) lensToHere = M1 $ gTableLenses (Proxy :: Proxy a) (\f -> lensToHere (\(M1 x) -> M1 <$> f x))

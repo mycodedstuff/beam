@@ -42,6 +42,7 @@ module Database.Beam.Backend.SQL
   , BeamSqlBackendSelectTableSyntax
   , BeamSqlBackendAggregationQuantifierSyntax
   , BeamSqlBackendSetQuantifierSyntax
+  , BeamSqlBackendIndexHintsSyntax
   , BeamSqlBackendFromSyntax
   , BeamSqlBackendTableNameSyntax
 
@@ -81,6 +82,7 @@ import qualified Control.Monad.Writer.Strict as Strict
 
 import Data.Tagged (Tagged)
 import Data.Text (Text)
+import GHC.Types (Type)
 
 -- * MonadBeam class
 
@@ -225,7 +227,7 @@ class ( -- Every SQL backend must be a beam backend
       , Eq (BeamSqlBackendExpressionSyntax be)
       ) => BeamSqlBackend be
 
-type family BeamSqlBackendSyntax be :: *
+type family BeamSqlBackendSyntax be :: Type
 
 -- | Fake backend that cannot deserialize anything, but is useful for testing
 data MockSqlBackend syntax
@@ -299,6 +301,7 @@ type BeamSqlBackendCastTargetSyntax be
 type BeamSqlBackendExpressionQuantifierSyntax be = Sql92ExpressionQuantifierSyntax (Sql92ExpressionSyntax (BeamSqlBackendSyntax be))
 type BeamSqlBackendValueSyntax be = Sql92ValueSyntax (BeamSqlBackendSyntax be)
 type BeamSqlBackendSetQuantifierSyntax be = Sql92SelectTableSetQuantifierSyntax (BeamSqlBackendSelectTableSyntax be)
+type BeamSqlBackendIndexHintsSyntax be = Sql92SelectTableSetIndexHintsSyntax (BeamSqlBackendSelectTableSyntax be)
 type BeamSqlBackendAggregationQuantifierSyntax be = Sql92AggregationSetQuantifierSyntax (BeamSqlBackendExpressionSyntax be)
 type BeamSqlBackendSelectTableSyntax be = Sql92SelectSelectTableSyntax (BeamSqlBackendSelectSyntax be)
 type BeamSqlBackendFromSyntax be = Sql92SelectFromSyntax (BeamSqlBackendSelectSyntax be)
