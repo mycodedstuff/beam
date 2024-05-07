@@ -1,9 +1,10 @@
 site_name: Beam Documentation
-theme: material #readthedocs
-theme_dir: docs/theme
+theme:
+  name: material
+  custom_dir: docs/theme
 extra_css:
   - docs/theme/css/beam.css
-pages:
+nav:
   - Home: 'index.md'
   - Frequently Asked Questions: 'about/faq.md'
   - Tutorial:
@@ -33,9 +34,6 @@ pages:
         - 'DELETE': 'user-guide/manipulation/delete.md'
   - Schema management:
       - 'The Migrations Framework': 'schema-guide/migrations.md'
-      - 'The beam-migrate tool': 'schema-guide/tool.md'
-      - 'The beam-migrate library': 'schema-guide/library.md'
-#      - 'Supported migrations': 'schema-guide/supported.md'
   - Backends:
       - 'beam-postgres': 'user-guide/backends/beam-postgres.md'
       - 'beam-sqlite': 'user-guide/backends/beam-sqlite.md'
@@ -51,12 +49,16 @@ markdown_extensions:
       cache_dir: 'docs/.beam-query-cache'
       conf: 'docs/beam.yaml'
       base_dir: '.'
-      enabled_backends: [ beam-postgres, beam-sqlite, beam-mysql, beam-mssql ]
+      enabled_backends:
+        - beam-postgres
+        - beam-sqlite
+        # - beam-mysql
+        # - beam-mssql
   - docs.markdown.markdown_fenced_code_tabs
   - def_list
   - codehilite
   - footnotes
 extra:
   logo: 'img/logo.svg'
-repo_name: 'tathougies/beam'
-repo_url: 'https://github.com/tathougies/beam'
+repo_name: 'haskell-beam/beam'
+repo_url: 'https://github.com/haskell-beam/beam'

@@ -23,6 +23,7 @@ import           Database.Beam.Migrate.Serialization
 
 import           Data.Char (toLower, toUpper)
 import           Data.Hashable
+import           Data.Int
 import           Data.List (find, nub)
 import qualified Data.Map as M
 import           Data.Maybe
@@ -695,6 +696,7 @@ instance IsSql92ExpressionSyntax HsExpr where
   leE q a b = hsApp (hsVar "leE")   [hsMaybe q, a, b]
 
   inE a b = hsApp (hsVar "inE") [a, hsList b]
+  inSelectE _ _ = error "inSelectE"
 
 instance IsSql92QuantifierSyntax HsExpr where
   quantifyOverAll = hsVar "quantifyOverAll"
@@ -717,7 +719,7 @@ instance IsSql92ConstraintAttributesSyntax HsNone where
   notDeferrableAttributeSyntax = HsNone
   deferrableAttributeSyntax = HsNone
 
-instance HasSqlValueSyntax HsExpr Int where
+instance HasSqlValueSyntax HsExpr Int32 where
   sqlValueSyntax = hsInt
 instance HasSqlValueSyntax HsExpr Bool where
   sqlValueSyntax True = hsVar "True"

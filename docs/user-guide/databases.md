@@ -81,7 +81,7 @@ combinator instead.
 <!--     = Person -->
 <!--     { personFirstName :: Columnar f Text -->
 <!--     , personLastName  :: Columnar f Text -->
-<!--     , personAge       :: Columnar f Int -->
+<!--     , personAge       :: Columnar f Int32 -->
 <!--     , personEmail     :: Columnar f Text -->
 <!--     , personPhone     :: Columnar f Text -->
 <!--     } deriving Generic -->
@@ -236,4 +236,44 @@ exampleDb = defaultDbSettings `withDbModification`
                             personEmail = "email_address"
                           }
             }
+```
+
+## Embedding
+
+You can freely include databases in one another. For example, suppose
+you had another database `ResourcesDb` defined elsewhere and you
+wanted to combine it with the `ExampleDb` above. You can create a
+`SuperDb` type as follows:
+
+```haskell
+data SuperDb f
+    = SuperDb
+    { example :: ExampleDb f
+    , resources :: ResourcesDb f
+    } deriving (Generic, Beamable)
+```
+
+Databases containing other databases can have their settings
+constructed, as usual.
+
+```haskell
+superDbDefault :: DatabaseSettings be SuperDb
+superDbDefault = defaultDbSettings
+```
+
+By default, embedding databases does not change any of the table
+names. This is done so that you can create larger databases out of
+smaller ones without having to worry about manually editing their
+names. Typically database decomposition is done when you want to
+define databases that only access particular subsets of tables. Thus,
+re-composing back together should not change the names.
+
+Of coures, embedded databases can be modified as well. To include our
+renamed `exampleDb` above, simply use the `embedDatabase`
+modification.
+
+```haskell
+superDbCustom :: DatabaseSettings be SuperDb
+superDbCustom = defaultDbSettings `withDbModification`
+                dbModification { example = exampleDb }
 ```

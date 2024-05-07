@@ -25,6 +25,7 @@ module Database.Beam.Backend.SQL.SQL2003
 
 import Database.Beam.Backend.SQL.SQL99
 
+import Data.Kind (Type)
 import Data.Text (Text)
 import GHC.Types (Type)
 

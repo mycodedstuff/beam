@@ -2,15 +2,9 @@
 
 ### `opaleye`
 
-`opaleye` has similar aims as beam. However, `beam`'s DSL is monadic,
-and eschews the use of arrows. We use a phantom scope parameter to
-achieve the same result (it's the `s` parameter in the `Q` and `QExpr`
-types). This allows you to write queries in the same way you'd use the
-list monad. Some people think this is more intuitive than arrows.
-
-Beam also uses higher-kinded types to allow the use of 'normal'
-haskell data types, rather than a fully polymorphic type. For example,
-in opaleye you may have to write
+`opaleye` has similar aims as beam. Beam uses higher-kinded types to
+allow the use of 'normal' haskell data types, rather than a fully
+polymorphic type. For example, in opaleye you may have to write
 
 ```haskell
 data Table column1 column2 column3 =
@@ -44,10 +38,7 @@ function, you can make that query polymorphic over a choice in backend
 by using the
 `IsSql2003EnhancedNumericFunctionsAggregationExpressionSyntax`
 class. You can freely mix and match backends at any time (well, within
-the realms of possibility in terms of Haskell polymorphism). For
-example, the `beam-migrate` CLI tool loads backends at run-time and
-issues queries against them, without knowing the specifics of any
-particular backend.
+the realms of possibility in terms of Haskell polymorphism).
 
 Finally, beam produces readable queries. Here is what opaleye produces on a left join:
 

@@ -1,5 +1,5 @@
 name:                beam-migrate
-version:             0.5.0.0
+version:             0.5.2.1
 synopsis:            SQL DDL support and migrations support library for Beam
 description:         This package provides type classes to allow backends to implement
                      SQL DDL support for beam. This allows you to use beam syntax to
@@ -12,12 +12,6 @@ description:         This package provides type classes to allow backends to imp
                      This is mostly a low-level support library. Most often, this
                      library is used to write tooling to support DDL manipulation in
                      your project, or to enable migrations support in beam backends.
-
-                     For a more turnkey solution for database migrations, consider
-                     the <http://hackage.haskell.org/package/beam-migrate-cli beam-migrate>
-                     command line tool. This provides out-of-the-box support for migrations,
-                     schema change management, and version control, based on the features
-                     provided in this library.
 
 homepage:            https://travis.athougies.net/projects/beam.html
 license:             MIT
@@ -99,5 +93,5 @@ flag werror
 
 source-repository head
   type: git
-  location: https://github.com/tathougies/beam.git
+  location: https://github.com/haskell-beam/beam.git
   subdir: beam-migrate

@@ -65,24 +65,24 @@ module Database.Beam.Backend.SQL
   , BeamSqlBackendSupportsDataType
   ) where
 
-import Database.Beam.Backend.SQL.SQL2003
-import Database.Beam.Backend.SQL.Row
-import Database.Beam.Backend.SQL.Types
-import Database.Beam.Backend.Types
+import           Database.Beam.Backend.SQL.SQL2003
+import           Database.Beam.Backend.SQL.Row
+import           Database.Beam.Backend.SQL.Types
+import           Database.Beam.Backend.Types
 
-import Control.Monad.Cont
-import Control.Monad.Except
+import           Control.Monad.Cont
+import           Control.Monad.Except
 import qualified Control.Monad.RWS.Lazy as Lazy
 import qualified Control.Monad.RWS.Strict as Strict
-import Control.Monad.Reader
+import           Control.Monad.Reader
 import qualified Control.Monad.State.Lazy as Lazy
 import qualified Control.Monad.Writer.Lazy as Lazy
 import qualified Control.Monad.State.Strict as Strict
 import qualified Control.Monad.Writer.Strict as Strict
 
-import Data.Tagged (Tagged)
-import Data.Text (Text)
-import GHC.Types (Type)
+import           Data.Kind (Type)
+import           Data.Tagged (Tagged)
+import           Data.Text (Text)
 
 -- * MonadBeam class
 
@@ -133,6 +133,12 @@ class (BeamBackend be, Monad m) =>
                case a' of
                  Nothing -> pure (Just x)
                  Just _ -> pure Nothing
+
+  -- | Run the given command and fetch the first result. The result is
+  --   'Nothing' if no results are returned.
+  --   This is not guaranteed to automatically limit the query to one result.
+  runReturningFirst :: FromBackendRow be x => BeamSqlBackendSyntax be -> m (Maybe x)
+  runReturningFirst cmd = runReturningMany cmd id
 
   -- | Run the given command, collect all the results, and return them as a
   --   list. May be more convenient than 'runReturningMany', but reads the entire

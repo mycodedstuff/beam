@@ -18,25 +18,26 @@ module Database.Beam.Backend.SQL.BeamExtensions
   , onConflictUpdateAll
   ) where
 
-import Database.Beam.Backend
-import Database.Beam.Query
-import Database.Beam.Query.Internal
-import Database.Beam.Schema
-import Database.Beam.Schema.Tables
+import           Database.Beam.Backend
+import           Database.Beam.Query
+import           Database.Beam.Query.Internal
+import           Database.Beam.Schema
+import           Database.Beam.Schema.Tables
 
-import Data.Functor.Const
-import Data.Proxy
-import Data.Semigroup
-import Control.Monad.Identity
-import Control.Monad.Cont
-import Control.Monad.Except
+import           Control.Monad.Cont
+import           Control.Monad.Except
+import           Control.Monad.Identity
 import qualified Control.Monad.RWS.Lazy as Lazy
 import qualified Control.Monad.RWS.Strict as Strict
-import Control.Monad.Reader
+import           Control.Monad.Reader
 import qualified Control.Monad.State.Lazy as Lazy
-import qualified Control.Monad.Writer.Lazy as Lazy
 import qualified Control.Monad.State.Strict as Strict
+import qualified Control.Monad.Writer.Lazy as Lazy
 import qualified Control.Monad.Writer.Strict as Strict
+import           Data.Functor.Const
+import           Data.Kind (Type)
+import           Data.Proxy
+import           Data.Semigroup
 
 --import GHC.Generics
 import GHC.Types (Type)

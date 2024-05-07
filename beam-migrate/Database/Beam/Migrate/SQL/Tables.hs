@@ -29,6 +29,7 @@ module Database.Beam.Migrate.SQL.Tables
     -- ** Internal classes
     --    Provided without documentation for use in type signatures
   , FieldReturnType(..)
+  , IsNotNull
   ) where
 
 import Database.Beam
@@ -43,6 +44,7 @@ import Database.Beam.Migrate.SQL.Types
 import Database.Beam.Migrate.SQL.SQL92
 
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.Writer.Strict
 import Control.Monad.State
@@ -81,13 +83,13 @@ createTable newTblName tblSettings =
 
          fieldChecks = changeBeamRep (\(Columnar' (TableFieldSchema _ _ cs)) -> Columnar' (Const cs)) tblSettings
 
-         tblChecks = [ TableCheck (\tblName _ -> SomeDatabasePredicate (TableExistsPredicate tblName)) ] ++
+         tblChecks = [ TableCheck (\tblName _ -> Just (SomeDatabasePredicate (TableExistsPredicate tblName))) ] ++
                      primaryKeyCheck
 
          primaryKeyCheck =
            case allBeamValues (\(Columnar' (TableFieldSchema name _ _)) -> name) (primaryKey tblSettings) of
              [] -> []
-             cols -> [ TableCheck (\tblName _ -> SomeDatabasePredicate (TableHasPrimaryKey tblName cols)) ]
+             cols -> [ TableCheck (\tblName _ -> Just (SomeDatabasePredicate (TableHasPrimaryKey tblName cols))) ]
 
      upDown command Nothing
      pure (CheckedDatabaseEntity (CheckedDatabaseTable (DatabaseTable Nothing newTblName newTblName tbl') tblChecks fieldChecks) [])
