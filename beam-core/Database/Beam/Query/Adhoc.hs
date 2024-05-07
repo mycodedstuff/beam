@@ -8,11 +8,12 @@ module Database.Beam.Query.Adhoc
   , table_, field_
   ) where
 
-import Database.Beam.Query.Internal
-import Database.Beam.Backend.SQL
+import           Database.Beam.Query.Internal
+import           Database.Beam.Backend.SQL
 
-import Control.Monad.Free.Church
+import           Control.Monad.Free.Church
 
+import           Data.Kind (Type)
 import qualified Data.Text as T
 
 import GHC.Types (Type)

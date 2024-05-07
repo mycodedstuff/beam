@@ -7,7 +7,7 @@ module Database.Beam.Backend.Types
 
   ) where
 
-import           GHC.Types
+import GHC.Types
 
 -- | Class for all Beam backends
 class BeamBackend be where

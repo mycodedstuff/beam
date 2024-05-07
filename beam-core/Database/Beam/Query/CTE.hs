@@ -8,16 +8,15 @@ import Database.Beam.Backend.SQL
 import Database.Beam.Query.Internal
 import Database.Beam.Query.Types
 
+import Control.Monad.Fix
 import Control.Monad.Free.Church
 import Control.Monad.Writer hiding ((<>))
 import Control.Monad.State.Strict
 
-import Data.Text (Text)
-import Data.String
+import Data.Kind (Type)
 import Data.Proxy (Proxy(Proxy))
-#if !MIN_VERSION_base(4, 11, 0)
-import           Data.Semigroup
-#endif
+import Data.String
+import Data.Text (Text)
 
 import GHC.Types (Type)
 
@@ -28,12 +27,12 @@ data Recursiveness be where
 
 instance Monoid (Recursiveness be) where
     mempty = Nonrecursive
-    mappend Recursive _ = Recursive
-    mappend _ Recursive = Recursive
-    mappend _ _ = Nonrecursive
+    mappend = (<>)
 
 instance Semigroup (Recursiveness be) where
-  (<>) = mappend
+    Recursive <> _ = Recursive
+    _ <> Recursive = Recursive
+    _ <> _ = Nonrecursive
 
 -- | Monad in which @SELECT@ statements can be made (via 'selecting')
 -- and bound to result names for re-use later. This has the advantage

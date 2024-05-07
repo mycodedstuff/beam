@@ -7,6 +7,7 @@ import Database.Beam.Backend.SQL.Types
 import Database.Beam.Backend.SQL.Row
 
 import Data.Int
+import Data.Kind (Type)
 import Data.Tagged
 import Data.Text (Text)
 import Data.Time (LocalTime)
@@ -72,7 +73,7 @@ type Sql92SanityCheck cmd =
   )
 
 type Sql92ReasonableMarshaller be =
-   ( FromBackendRow be Int, FromBackendRow be SqlNull
+   ( FromBackendRow be SqlNull
    , FromBackendRow be Text, FromBackendRow be Bool
    , FromBackendRow be Char
    , FromBackendRow be Int16, FromBackendRow be Int32, FromBackendRow be Int64
@@ -174,8 +175,8 @@ class ( IsSql92ExpressionSyntax (Sql92UpdateExpressionSyntax update)
       , IsSql92TableNameSyntax (Sql92UpdateTableNameSyntax update) ) =>
       IsSql92UpdateSyntax update where
 
-  type Sql92UpdateTableNameSyntax update :: Type
-  type Sql92UpdateFieldNameSyntax update :: Type
+  type Sql92UpdateTableNameSyntax  update :: Type
+  type Sql92UpdateFieldNameSyntax  update :: Type
   type Sql92UpdateExpressionSyntax update :: Type
 
   updateStmt :: Sql92UpdateTableNameSyntax update
@@ -186,7 +187,7 @@ class ( IsSql92ExpressionSyntax (Sql92UpdateExpressionSyntax update)
 class ( IsSql92TableNameSyntax (Sql92DeleteTableNameSyntax delete)
       , IsSql92ExpressionSyntax (Sql92DeleteExpressionSyntax delete) ) =>
   IsSql92DeleteSyntax delete where
-  type Sql92DeleteTableNameSyntax delete :: Type
+  type Sql92DeleteTableNameSyntax  delete :: Type
   type Sql92DeleteExpressionSyntax delete :: Type
 
   deleteStmt :: Sql92DeleteTableNameSyntax delete -> Maybe Text
@@ -233,7 +234,7 @@ class IsSql92DataTypeSyntax dataType where
   timestampType :: Maybe Word -> Bool {-^ With time zone -} -> dataType
   -- TODO interval type
 
-class ( HasSqlValueSyntax (Sql92ExpressionValueSyntax expr) Int
+class ( HasSqlValueSyntax (Sql92ExpressionValueSyntax expr) Int32
       , HasSqlValueSyntax (Sql92ExpressionValueSyntax expr) Bool
       , IsSql92FieldNameSyntax (Sql92ExpressionFieldNameSyntax expr)
       , IsSql92QuantifierSyntax (Sql92ExpressionQuantifierSyntax expr)
@@ -242,9 +243,9 @@ class ( HasSqlValueSyntax (Sql92ExpressionValueSyntax expr) Int
       , Typeable expr ) =>
     IsSql92ExpressionSyntax expr where
   type Sql92ExpressionQuantifierSyntax expr :: Type
-  type Sql92ExpressionValueSyntax expr :: Type
-  type Sql92ExpressionSelectSyntax expr :: Type
-  type Sql92ExpressionFieldNameSyntax expr :: Type
+  type Sql92ExpressionValueSyntax      expr :: Type
+  type Sql92ExpressionSelectSyntax     expr :: Type
+  type Sql92ExpressionFieldNameSyntax  expr :: Type
   type Sql92ExpressionCastTargetSyntax expr :: Type
   type Sql92ExpressionExtractFieldSyntax expr :: Type
 
@@ -318,6 +319,7 @@ class ( HasSqlValueSyntax (Sql92ExpressionValueSyntax expr) Int
   defaultE :: expr
 
   inE :: expr -> [ expr ] -> expr
+  inSelectE :: expr -> Sql92ExpressionSelectSyntax expr -> expr
 
 instance HasSqlValueSyntax syntax x => HasSqlValueSyntax syntax (SqlSerial x) where
   sqlValueSyntax (SqlSerial x) = sqlValueSyntax x

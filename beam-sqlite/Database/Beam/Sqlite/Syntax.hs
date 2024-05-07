@@ -38,12 +38,13 @@ module Database.Beam.Sqlite.Syntax
     -- * Building and consuming 'SqliteSyntax'
   , fromSqliteCommand, formatSqliteInsert, formatSqliteInsertOnConflict
 
-  , emit, emitValue, parens, commas
+  , emit, emitValue, parens, commas, quotedIdentifier
 
   , sqliteEscape, withPlaceholders
   , sqliteRenderSyntaxScript
   ) where
 
+import           Database.Beam.Backend.Internal.Compat
 import           Database.Beam.Backend.SQL
 import           Database.Beam.Backend.SQL.AST (ExtractField(..))
 import           Database.Beam.Haskell.Syntax
@@ -72,8 +73,10 @@ import           Data.Word
 #if !MIN_VERSION_base(4, 11, 0)
 import           Data.Semigroup
 #endif
+import           GHC.TypeLits
 
 import           Database.SQLite.Simple (SQLData(..))
+import           Database.SQLite.Simple.ToField (toField)
 
 import           GHC.Float
 import           GHC.Generics
@@ -93,7 +96,7 @@ import           GHC.Generics
 -- value list is ignored.
 data SqliteSyntax = SqliteSyntax ((SQLData -> Builder) -> Builder) (DL.DList SQLData)
 newtype SqliteData = SqliteData SQLData -- newtype for Hashable
-                   deriving newtype (Eq)
+  deriving Eq
 
 instance Show SqliteSyntax where
   show (SqliteSyntax s d) =
@@ -311,10 +314,21 @@ formatSqliteInsertOnConflict :: SqliteTableNameSyntax -> [ T.Text ] -> SqliteIns
 formatSqliteInsertOnConflict tblNm fields values onConflict = mconcat
   [ emit "INSERT INTO "
   , fromSqliteTableName tblNm
-  , parens (commas (map quotedIdentifier fields))
+  , if null fields
+      then mempty
+      else parens (commas (map quotedIdentifier fields))
   , emit " "
   , case values of
       SqliteInsertFromSql (SqliteSelectSyntax select) -> select
+      -- Because SQLite doesn't support explicit DEFAULT values, if an insert
+      -- batch contains any defaults, we split it into a series of single-row
+      -- inserts specifying only the non-default columns (which could differ
+      -- between rows in the batch). To insert all default values, there is
+      -- special DEFAULT VALUES syntax, which only supports one row anyway.
+      -- Unfortunately, SQLite doesn't currently support DEFAULT VALUES with ON
+      -- CONFLICT. We don't specially catch that in hopes that SQLite will some
+      -- day support it, since there is really no reason it shouldn't.
+      SqliteInsertExpressions [[]] -> emit "DEFAULT VALUES"
       SqliteInsertExpressions es ->
         emit "VALUES " <> commas (map (\row -> parens (commas (map fromSqliteExpression row)) ) es)
   , maybe mempty ((emit " " <>) . fromSqliteOnConflict) onConflict
@@ -523,7 +537,7 @@ instance IsSql92DataTypeSyntax SqliteDataTypeSyntax where
   varBitType prec = SqliteDataTypeSyntax (emit "BIT VARYING" <> sqliteOptPrec prec) (varBitType prec) (varBitType prec) False
 
   numericType prec = SqliteDataTypeSyntax (emit "NUMERIC" <> sqliteOptNumericPrec prec) (numericType prec) (numericType prec) False
-  decimalType prec = SqliteDataTypeSyntax (emit "DOUBLE" <> sqliteOptNumericPrec prec) (decimalType prec) (decimalType prec) False
+  decimalType prec = SqliteDataTypeSyntax (emit "DECIMAL" <> sqliteOptNumericPrec prec) (decimalType prec) (decimalType prec) False
 
   intType = SqliteDataTypeSyntax (emit "INTEGER") intType intType False
   smallIntType = SqliteDataTypeSyntax (emit "SMALLINT") smallIntType smallIntType False
@@ -691,8 +705,6 @@ instance IsSql92OrderingSyntax SqliteOrderingSyntax where
   ascOrdering e = SqliteOrderingSyntax (fromSqliteExpression e <> emit " ASC")
   descOrdering e = SqliteOrderingSyntax (fromSqliteExpression e <> emit " DESC")
 
-instance HasSqlValueSyntax SqliteValueSyntax Int where
-  sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
 instance HasSqlValueSyntax SqliteValueSyntax Int8 where
   sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
 instance HasSqlValueSyntax SqliteValueSyntax Int16 where
@@ -700,8 +712,6 @@ instance HasSqlValueSyntax SqliteValueSyntax Int16 where
 instance HasSqlValueSyntax SqliteValueSyntax Int32 where
   sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
 instance HasSqlValueSyntax SqliteValueSyntax Int64 where
-  sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
-instance HasSqlValueSyntax SqliteValueSyntax Word where
   sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
 instance HasSqlValueSyntax SqliteValueSyntax Word8 where
   sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
@@ -718,7 +728,7 @@ instance HasSqlValueSyntax SqliteValueSyntax Float where
 instance HasSqlValueSyntax SqliteValueSyntax Double where
   sqlValueSyntax f = SqliteValueSyntax (emitValue (SQLFloat f))
 instance HasSqlValueSyntax SqliteValueSyntax Bool where
-  sqlValueSyntax = sqlValueSyntax . (\b -> if b then 1 else 0 :: Int)
+  sqlValueSyntax = sqlValueSyntax . (\b -> if b then 1 else 0 :: Int32)
 instance HasSqlValueSyntax SqliteValueSyntax SqlNull where
   sqlValueSyntax _ = SqliteValueSyntax (emit "NULL")
 instance HasSqlValueSyntax SqliteValueSyntax String where
@@ -731,6 +741,12 @@ instance HasSqlValueSyntax SqliteValueSyntax x =>
   HasSqlValueSyntax SqliteValueSyntax (Maybe x) where
   sqlValueSyntax (Just x) = sqlValueSyntax x
   sqlValueSyntax Nothing = sqlValueSyntax SqlNull
+
+instance TypeError (PreferExplicitSize Int Int32) => HasSqlValueSyntax SqliteValueSyntax Int where
+  sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
+
+instance TypeError (PreferExplicitSize Word Word32) => HasSqlValueSyntax SqliteValueSyntax Word where
+  sqlValueSyntax i = SqliteValueSyntax (emitValue (SQLInteger (fromIntegral i)))
 
 instance IsCustomSqlSyntax SqliteExpressionSyntax where
   newtype CustomSqlSyntax SqliteExpressionSyntax =
@@ -812,6 +828,8 @@ instance IsSql92ExpressionSyntax SqliteExpressionSyntax where
 
   defaultE = SqliteExpressionDefault
   inE e es = SqliteExpressionSyntax (parens (fromSqliteExpression e) <> emit " IN " <> parens (commas (map fromSqliteExpression es)))
+  inSelectE e sel =
+      SqliteExpressionSyntax (parens (fromSqliteExpression e) <> emit " IN " <> parens (fromSqliteSelect sel))
 
 instance IsSql99ConcatExpressionSyntax SqliteExpressionSyntax where
   concatE [] = valueE (sqlValueSyntax ("" :: T.Text))
@@ -952,8 +970,7 @@ instance HasSqlValueSyntax SqliteValueSyntax ByteString where
   sqlValueSyntax bs = SqliteValueSyntax (emitValue (SQLBlob bs))
 
 instance HasSqlValueSyntax SqliteValueSyntax UTCTime where
-  sqlValueSyntax tm = SqliteValueSyntax (emitValue (SQLText (fromString tmStr)))
-    where tmStr = formatTime defaultTimeLocale (iso8601DateFormat (Just "%H:%M:%S%Q")) tm
+  sqlValueSyntax tm = SqliteValueSyntax (emitValue (toField tm))
 
 instance HasSqlValueSyntax SqliteValueSyntax LocalTime where
   sqlValueSyntax tm = SqliteValueSyntax (emitValue (SQLText (fromString tmStr)))

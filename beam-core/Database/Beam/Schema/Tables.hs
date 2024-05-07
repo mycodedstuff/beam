@@ -25,7 +25,7 @@ module Database.Beam.Schema.Tables
     , withTableModification, modifyTable, modifyEntityName
     , setEntityName, modifyTableFields, fieldNamed
     , modifyEntitySchema, setEntitySchema
-    , defaultDbSettings
+    , defaultDbSettings, embedDatabase
 
     , RenamableWithRule(..), RenamableField(..)
     , FieldRenamer(..)
@@ -83,11 +83,8 @@ import           Control.Monad.Writer hiding ((<>))
 import           Data.Char (isUpper, toLower)
 import           Data.Foldable (fold)
 import qualified Data.List.NonEmpty as NE
-import           Data.Monoid (Endo(..))
+import           Data.Monoid
 import           Data.Proxy
-#if !MIN_VERSION_base(4,11,0)
-import           Data.Semigroup
-#endif
 import           Data.String (IsString(..))
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -103,9 +100,10 @@ import qualified Lens.Micro as Lens
 
 -- | Allows introspection into database types.
 --
---   All database types must be of kind '(Type -> Type) -> Type'. If the type parameter
---   is named 'f', each field must be of the type of 'f' applied to some type
---   for which an 'IsDatabaseEntity' instance exists.
+--   All database types must be of kind '(Type -> Type) -> Type'. If
+--   the type parameter is named 'f', each field must be of the type
+--   of 'f' applied to some type for which an 'IsDatabaseEntity'
+--   instance exists.
 --
 --   The 'be' type parameter is necessary so that the compiler can
 --   ensure that backend-specific entities only work on the proper
@@ -164,7 +162,7 @@ type DatabaseModification f be db = db (EntityModification f be)
 --   contstruct these for you.
 newtype EntityModification f be e = EntityModification (Endo (f e))
   deriving (Monoid, Semigroup)
--- | A newtype wrapper around 'Columnar f a -> Columnar f ' (i.e., an
+-- | A newtype wrapper around 'Columnar f a -> Columnar f a' (i.e., an
 --   endomorphism between 'Columnar's over 'f'). You usually want to use
 --   'fieldNamed' or the 'IsString' instance to rename the field, when 'f ~
 --   TableField'
@@ -220,7 +218,6 @@ withTableModification mods tbl =
   runIdentity $ zipBeamFieldsM (\(Columnar' field :: Columnar' f a) (Columnar' (FieldModification fieldFn :: FieldModification f a)) ->
                                   pure (Columnar' (fieldFn field))) tbl mods
 
-
 -- | Provide an 'EntityModification' for 'TableEntity's. Allows you to modify
 --   the name of the table and provide a modification for each field in the
 --   table. See the examples for 'withDbModification' for more.
@@ -245,6 +242,14 @@ setEntityName nm = modifyEntityName (\_ -> nm)
 
 setEntitySchema :: IsDatabaseEntity be entity => Maybe Text -> EntityModification (DatabaseEntity be db) be entity
 setEntitySchema nm = modifyEntitySchema (\_ -> nm)
+
+-- | Embed database settings in a larger database
+embedDatabase :: forall be embedded db. Database be embedded => DatabaseSettings be embedded -> embedded (EntityModification (DatabaseEntity be db) be)
+embedDatabase db =
+    runIdentity $
+    zipTables (Proxy @be)
+              (\(DatabaseEntity x) _ -> pure (EntityModification (Endo (\_ -> DatabaseEntity x))))
+              db db
 
 -- | Construct an 'EntityModification' to rename the fields of a 'TableEntity'
 modifyTableFields :: tbl (FieldModification (TableField tbl)) -> EntityModification (DatabaseEntity be db) be (TableEntity tbl)
@@ -290,7 +295,7 @@ instance IsString (FieldModification (TableField tbl) a) where
 --   [manual](https://haskell-beam.github.io/beam/user-guide/models) for more.
 data TableEntity (tbl :: (Type -> Type) -> Type)
 data ViewEntity (view :: (Type -> Type) -> Type)
---data UniqueConstraint (tbl :: (Type -> Type) -> Type) (c :: (Type -> Type) -> Type)
+--data UniqueConstraint (tbl :: (* -> *) -> *) (c :: (* -> *) -> *)
 data DomainTypeEntity (ty :: Type)
 --data CharacterSetEntity
 --data CollationEntity
@@ -413,6 +418,16 @@ instance ( Selector f, IsDatabaseEntity be x, DatabaseEntityDefaultRequirements 
   GAutoDbSettings (S1 f (K1 Generic.R (DatabaseEntity be db x)) p) where
   autoDbSettings' = M1 (K1 (DatabaseEntity (dbEntityAuto name)))
     where name = T.pack (selName (undefined :: S1 f (K1 Generic.R (DatabaseEntity be db x)) p))
+instance ( Database be embedded
+         , Generic (DatabaseSettings be embedded)
+         , GAutoDbSettings (Rep (DatabaseSettings be embedded) ()) ) =>
+    GAutoDbSettings (S1 f (K1 Generic.R (embedded (DatabaseEntity be super))) p) where
+  autoDbSettings' =
+    M1 . K1 . runIdentity $
+    zipTables (Proxy @be)
+              (\(DatabaseEntity x) _ -> pure (DatabaseEntity x))
+              db db
+    where db = defaultDbSettings @be
 
 class GZipDatabase be f g h x y z where
   gZipDatabase :: Applicative m =>
@@ -432,6 +447,11 @@ instance (IsDatabaseEntity be tbl, DatabaseEntityRegularRequirements be tbl) =>
 
   gZipDatabase _ combine ~(K1 x) ~(K1 y) =
     K1 <$> combine x y
+instance Database be db =>
+    GZipDatabase be f g h (K1 Generic.R (db f)) (K1 Generic.R (db g)) (K1 Generic.R (db h)) where
+
+  gZipDatabase _ combine ~(K1 x) ~(K1 y) =
+      K1 <$> zipTables (Proxy @be) combine x y
 
 data Lenses (t :: (Type -> Type) -> Type) (f :: Type -> Type) x
 data LensFor t x where
@@ -463,7 +483,7 @@ data LensFor t x where
 -- >                   { _refToAnotherTable :: PrimaryKey AnotherTableT (Nullable f)
 -- >                   , ... }
 --
---   Now we can use 'justRef' and 'nothingRef' to refer to this table optionally. The embedded 'PrimaryKey' in '_refToAnotherTable'
+--   Now we can use 'just_' and 'nothing_' to refer to this table optionally. The embedded 'PrimaryKey' in '_refToAnotherTable'
 --   automatically has its fields converted into 'Maybe' using 'Nullable'.
 --
 --   The last 'Columnar' rule is
@@ -560,12 +580,15 @@ type HasBeamFields table f g h = ( GZipTables f g h (Rep (table Exposed))
 
 -- | The big Kahuna! All beam tables implement this class.
 --
---   The kind of all table types is '(Type -> Type) -> Type'. This is because all table types are actually /table type constructors/.
---   Every table type takes in another type constructor, called the /column tag/, and uses that constructor to instantiate the column types.
---   See the documentation for 'Columnar'.
+--   The kind of all table types is '(Type -> Type) -> Type'. This is
+--   because all table types are actually /table type constructors/.
+--   Every table type takes in another type constructor, called the
+--   /column tag/, and uses that constructor to instantiate the column
+--   types.  See the documentation for 'Columnar'.
 --
---   This class is mostly Generic-derivable. You need only specify a type for the table's primary key and a method to extract the primary key
---   given the table.
+--   This class is mostly Generic-derivable. You need only specify a
+--   type for the table's primary key and a method to extract the
+--   primary key given the table.
 --
 --   An example table:
 --
@@ -883,7 +906,7 @@ type family ChooseSubTableStrategy (tbl :: (Type -> Type) -> Type) (sub :: (Type
 -- TODO is this necessary
 type family CheckNullable (f :: Type -> Type) :: Constraint where
   CheckNullable (Nullable f) = ()
-  CheckNullable f = TypeError ('Text "Recursive reference without Nullable constraint forms an infinite loop." ':$$:
+  CheckNullable f = TypeError ('Text "Recursive references without Nullable constraint form an infinite loop." ':$$:
                                'Text "Hint: Only embed nullable 'PrimaryKey tbl' within the definition of 'tbl'." ':$$:
                                'Text "      For example, replace 'PrimaryKey tbl f' with 'PrimaryKey tbl (Nullable f)'")
 

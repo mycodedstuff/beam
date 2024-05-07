@@ -17,10 +17,13 @@ import           Database.Beam
 import           Database.Beam.Schema.Tables
 import           Database.Beam.Backend
 
+import           Data.Int
 import           Data.List.NonEmpty ( NonEmpty((:|)) )
 import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time.Clock (UTCTime)
+
+import           Lens.Micro.Extras (view)
 
 import           Test.Tasty
 import           Test.Tasty.HUnit
@@ -33,9 +36,8 @@ tests = testGroup "Schema Tests"
                   , parametricAndFixedNestedBeamsAreEquivalent
 --                  , automaticNestedFieldsAreUnset
 --                  , nullableForeignKeysGivenMaybeType
-                  , underscoresAreHandledGracefully ]
---                  , dbSchemaGeneration ]
---                  , dbSchemaModification ]
+                  , underscoresAreHandledGracefully
+                  , embeddedDatabases ]
 
 data DummyBackend
 
@@ -49,7 +51,7 @@ data EmployeeT f
   , _employeeLastName  :: Columnar f Text
   , _employeePhoneNumber :: Columnar f Text
 
-  , _employeeAge       :: Columnar f Int
+  , _employeeAge       :: Columnar f Int32
   , _employeeSalary    :: Columnar f Double
 
   , _employeeHireDate  :: Columnar f UTCTime
@@ -146,7 +148,7 @@ data FunnyT f
   , funny_first_name :: Columnar f Text
   , _funny_lastName :: Columnar f Text
   , _funny_middle_Name :: Columnar f Text
-  , ___ :: Columnar f Int }
+  , ___ :: Columnar f Int32 }
   deriving Generic
 instance Beamable FunnyT
 instance Table FunnyT where
@@ -247,7 +249,7 @@ instance (Table metaInfo, Table prop) => Beamable (PrimaryKey (DepartamentRelate
 data VehiculeT f = VehiculeT
       { _vehiculeId     :: C f Text
       , _vehiculeType   :: C f Text
-      , _numberOfWheels :: C f Int
+      , _numberOfWheels :: C f Int32
       } deriving Generic
 
 instance Beamable VehiculeT
@@ -314,34 +316,38 @@ employeeDbSettingsRuleMods = defaultDbSettings `withDbModification`
                                                   Nothing -> defName
                                                   Just _ -> "pfx_" <> defName)
 
--- employeeDbSettingsModified :: DatabaseSettings EmployeeDb
--- employeeDbSettingsModified =
---   defaultDbSettings `withDbModifications`
---   (modifyingDb { _employees = tableModification (\_ -> "emps") tableFieldsModification
---                , _departments = tableModification (\_ -> "depts")
---                                                   (tableFieldsModification
---                                                     { _departmentName = fieldModification (\_ -> "depts_name") id }) })
+data VehicleDb f
+    = VehicleDb
+    { _vdbVehiculesA :: f (TableEntity ADepartmentVehiculeT)
+    , _vdbVehiculesB :: f (TableEntity BDepartmentVehiculeT)
+    } deriving Generic
+instance Database be VehicleDb
 
--- dbSchemaGeneration :: TestTree
--- dbSchemaGeneration =
---   testCase "Database schema generation" $
---   do let names = allTables (\(DatabaseTable _ nm _) -> nm) employeeDbSettings
---      names @?= [ "employees"
---                , "departments"
---                , "roles"
---                , "funny" ]
+data SuperDb f
+    = SuperDb
+    { _embedEmployeeDb :: EmployeeDb f
+    , _embedVehicleDb  :: VehicleDb f
+    } deriving Generic
+instance Database be SuperDb
 
--- dbSchemaModification :: TestTree
--- dbSchemaModification =
---   testCase "Database schema modification" $
---   do let names = allTables (\(DatabaseTable _ nm _ ) -> nm) employeeDbSettingsModified
---      names @?= [ "emps"
---                , "depts"
---                , "roles"
---                , "funny" ]
+superDbSettingsDefault :: DatabaseSettings be SuperDb
+superDbSettingsDefault = defaultDbSettings
 
---      let DatabaseTable _ _ departmentT = _departments employeeDbSettingsModified
---      departmentT @?= DepartmentT (TableField "depts_name" (DummyField False False DummyFieldText))
---                                  (EmployeeId (TableField "head__first_name" (DummyField True False (DummyFieldMaybe DummyFieldText)))
---                                              (TableField "head__last_name" (DummyField True False (DummyFieldMaybe DummyFieldText)))
---                                              (TableField "head__created" (DummyField True False (DummyFieldMaybe DummyFieldUTCTime))))
+superDbSettingsCustom :: DatabaseSettings be SuperDb
+superDbSettingsCustom = defaultDbSettings `withDbModification` dbModification { _embedVehicleDb = embedDatabase customVehicleDb }
+
+customVehicleDb :: DatabaseSettings be VehicleDb
+customVehicleDb = defaultDbSettings `withDbModification` dbModification
+                  { _vdbVehiculesA = setEntityName "something_random" }
+
+
+embeddedDatabases :: TestTree
+embeddedDatabases =
+    testGroup "Embedded databases"
+      [ testCase "Databases can be embedded" $ do
+          view (dbEntityDescriptor . dbEntityName) (_vdbVehiculesA (_embedVehicleDb superDbSettingsDefault)) @?= "vehicules_a"
+          view (dbEntityDescriptor . dbEntityName) (_vdbVehiculesB (_embedVehicleDb superDbSettingsDefault)) @?= "vehicules_b"
+      , testCase "Databases can be customized when embedded" $ do
+          view (dbEntityDescriptor . dbEntityName) (_vdbVehiculesA (_embedVehicleDb superDbSettingsCustom)) @?= "something_random"
+      ]
+
