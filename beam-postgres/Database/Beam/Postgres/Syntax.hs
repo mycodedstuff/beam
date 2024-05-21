@@ -561,8 +561,8 @@ instance IsSql92DataTypeSyntax PgDataTypeSyntax where
                                                (timestampType prec withTz)
 
 instance IsSql99DataTypeSyntax PgDataTypeSyntax where
-  characterLargeObjectType = pgTextType { pgDataTypeSerialized = characterLargeObjectType }
-  binaryLargeObjectType = pgByteaType { pgDataTypeSerialized = binaryLargeObjectType }
+  characterLargeObjectType = pgTextType
+  binaryLargeObjectType = pgByteaType
   booleanType = PgDataTypeSyntax (PgDataTypeDescrOid (Pg.typoid Pg.bool) Nothing) (emit "BOOLEAN")
                                  booleanType
   arrayType (PgDataTypeSyntax _ syntax serialized) sz =
