@@ -1423,36 +1423,36 @@ pgUnnestArrayWithOrdinality (QExpr q) =
   pgUnnest' (\t -> emit "UNNEST" <> pgParens (fromPgExpression (q t)) <> emit " WITH ORDINALITY")
 
 instance HasDefaultSqlDataType Postgres PgPoint where
-  defaultSqlDataType _ _ _ = pgPointType
+  defaultSqlDataType _ _ _ _ _ = pgPointType
 
 instance HasDefaultSqlDataType Postgres PgLine where
-  defaultSqlDataType _ _ _ = pgLineType
+  defaultSqlDataType _ _ _ _ _ = pgLineType
 
 instance HasDefaultSqlDataType Postgres PgLineSegment where
-  defaultSqlDataType _ _ _ = pgLineSegmentType
+  defaultSqlDataType _ _ _ _ _ = pgLineSegmentType
 
 instance HasDefaultSqlDataType Postgres PgBox where
-  defaultSqlDataType _ _ _ = pgBoxType
+  defaultSqlDataType _ _ _ _ _ = pgBoxType
 
 instance HasDefaultSqlDataType Postgres TsQuery where
-  defaultSqlDataType _ _ _ = pgTsQueryType
+  defaultSqlDataType _ _ _ _ _ = pgTsQueryType
 
 instance HasDefaultSqlDataType Postgres TsVector where
-  defaultSqlDataType _ _ _ = pgTsVectorType
+  defaultSqlDataType _ _ _ _ _ = pgTsVectorType
 
 instance HasDefaultSqlDataType Postgres (PgJSON a) where
-  defaultSqlDataType _ _ _ = pgJsonType
+  defaultSqlDataType _ _ _ _ _ = pgJsonType
 
 instance HasDefaultSqlDataType Postgres (PgJSONB a) where
-  defaultSqlDataType _ _ _ = pgJsonbType
+  defaultSqlDataType _ _ _ _ _ = pgJsonbType
 
 instance HasDefaultSqlDataType Postgres PgMoney where
-  defaultSqlDataType _ _ _ = pgMoneyType
+  defaultSqlDataType _ _ _ _ _ = pgMoneyType
 
 instance HasDefaultSqlDataType Postgres a
     => HasDefaultSqlDataType Postgres (V.Vector a) where
-  defaultSqlDataType _ be embedded =
-      pgUnboundedArrayType (defaultSqlDataType (Proxy :: Proxy a) be embedded)
+  defaultSqlDataType _ be embedded tblNm nm =
+      pgUnboundedArrayType (defaultSqlDataType (Proxy :: Proxy a) be embedded tblNm nm)
 
 -- $full-text-search
 --

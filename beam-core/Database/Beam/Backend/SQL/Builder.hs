@@ -431,7 +431,7 @@ instance IsSql92FromSyntax SqlSyntaxBuilder where
     rightJoin = join "RIGHT JOIN"
 
 instance IsSql92DataTypeSyntax SqlSyntaxBuilder where
-    domainType nm = SqlSyntaxBuilder (quoteSql nm)
+    domainType mSchema nm = SqlSyntaxBuilder (maybe mempty (\s -> quoteSql s <> ".") mSchema <> quoteSql nm)
     charType prec charSet = SqlSyntaxBuilder ("CHAR" <> sqlOptPrec prec <> sqlOptCharSet charSet)
     varCharType prec charSet = SqlSyntaxBuilder ("VARCHAR" <> sqlOptPrec prec <> sqlOptCharSet charSet)
     nationalCharType prec = SqlSyntaxBuilder ("NATIONAL CHAR" <> sqlOptPrec prec)

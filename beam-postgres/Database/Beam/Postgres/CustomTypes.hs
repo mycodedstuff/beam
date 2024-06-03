@@ -43,13 +43,13 @@ import           Data.Proxy (Proxy(..))
 #if !MIN_VERSION_base(4,11,0)
 import           Data.Semigroup
 #endif
-import           Data.Text (Text)
+import           Data.Text (Text, pack)
 import qualified Data.Text.Encoding as TE
 
 import qualified Database.PostgreSQL.Simple.FromField as Pg
 
 data PgType a
-newtype PgTypeCheck = PgTypeCheck (Text -> SomeDatabasePredicate)
+newtype PgTypeCheck = PgTypeCheck (QualifiedName -> SomeDatabasePredicate)
 
 data PgDataTypeSchema a where
     PgDataTypeEnum :: HasSqlValueSyntax PgValueSyntax a => [a] -> PgDataTypeSchema a
@@ -79,7 +79,7 @@ pgCreateEnumActionProvider =
      let cmd = pgCreateEnumSyntax nm (fmap sqlValueSyntax vals)
      pure (PotentialAction mempty (HS.fromList [p enumP])
                            (pure (MigrationCommand cmd MigrationKeepsData))
-                           ("Create the enumeration " <> nm) 1)
+                           ("Create the enumeration " <> pack (show nm)) 1)
 
 pgDropEnumActionProvider :: ActionProvider Postgres
 pgDropEnumActionProvider =
@@ -92,7 +92,7 @@ pgDropEnumActionProvider =
      let cmd = pgDropTypeSyntax nm
      pure (PotentialAction (HS.fromList [p enumP]) mempty
                            (pure (MigrationCommand cmd MigrationKeepsData))
-                           ("Drop the enumeration type " <> nm) 1)
+                           ("Drop the enumeration type " <> pack (show nm)) 1)
 
 pgChecksForTypeSchema :: PgDataTypeSchema a -> [ PgTypeCheck ]
 pgChecksForTypeSchema (PgDataTypeEnum vals) =
@@ -126,7 +126,7 @@ instance IsDatabaseEntity Postgres (PgType a) where
   dbEntityName f (PgTypeDescriptor sch nm ty) = (\nm' -> PgTypeDescriptor sch nm' ty) <$> f nm
   dbEntitySchema f (PgTypeDescriptor sch nm ty) = PgTypeDescriptor <$> f sch <*> pure nm <*> pure ty
   dbEntityAuto _ = PgTypeDescriptor Nothing typeName
-                                    (PgDataTypeSyntax (PgDataTypeDescrDomain typeName)
+                                    (PgDataTypeSyntax (PgDataTypeDescrDomain (QualifiedName Nothing typeName))
                                                       (pgQuotedIdentifier typeName)
                                                       (pgDataTypeJSON (object [ "customType" .= typeName])))
       where
@@ -142,7 +142,7 @@ instance IsCheckedDatabaseEntity Postgres (PgType a) where
 
     unChecked f (CheckedPgTypeDescriptor ty d) = fmap (\ty' -> CheckedPgTypeDescriptor ty' d) (f ty)
     collectEntityChecks (CheckedPgTypeDescriptor e chks) =
-        fmap (\(PgTypeCheck mkCheck) -> mkCheck (getConst (dbEntityName Const e))) chks
+        fmap (\(PgTypeCheck mkCheck) -> mkCheck (QualifiedName (getConst (dbEntitySchema Const e)) (getConst (dbEntityName Const e)))) chks
     checkedDbEntityAuto nm = CheckedPgTypeDescriptor (dbEntityAuto nm)
                                                      (pgChecksForTypeSchema (pgDataTypeDescription @a))
 
@@ -152,15 +152,16 @@ instance RenamableWithRule (FieldRenamer (DatabaseEntityDescriptor Postgres (PgT
 createEnum :: forall a db
             . ( HasSqlValueSyntax PgValueSyntax a
               , Enum a, Bounded a )
-           => Text -> Migration Postgres (CheckedDatabaseEntity Postgres db (PgType a))
-createEnum nm = do
-  upDown (pgCreateEnumSyntax nm (fmap sqlValueSyntax [minBound..(maxBound::a)]))
-         (Just (pgDropTypeSyntax nm))
+           => Maybe Text -> Text -> Migration Postgres (CheckedDatabaseEntity Postgres db (PgType a))
+createEnum mSchema nm = do
+  let enumName = QualifiedName mSchema nm
+  upDown (pgCreateEnumSyntax enumName (fmap sqlValueSyntax [minBound..(maxBound::a)]))
+         (Just (pgDropTypeSyntax enumName))
 
-  let tyDesc = PgTypeDescriptor Nothing nm $
-               PgDataTypeSyntax (PgDataTypeDescrDomain nm)
-                                (pgQuotedIdentifier nm)
-                                (pgDataTypeJSON (object [ "customType" .= nm ]))
+  let tyDesc = PgTypeDescriptor mSchema nm$
+               PgDataTypeSyntax (PgDataTypeDescrDomain enumName)
+                                (maybe mempty (\sch -> pgQuotedIdentifier sch <> emit ".") mSchema <> pgQuotedIdentifier nm)
+                                (pgDataTypeJSON (object [ "customType" .= enumName ]))
 
   pure (CheckedDatabaseEntity
           (CheckedPgTypeDescriptor tyDesc

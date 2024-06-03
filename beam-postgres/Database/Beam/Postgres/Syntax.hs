@@ -325,7 +325,7 @@ data PgSelectLockingOptions
 
 data PgDataTypeDescr
   = PgDataTypeDescrOid Pg.Oid (Maybe Int32)
-  | PgDataTypeDescrDomain T.Text
+  | PgDataTypeDescrDomain QualifiedName
   deriving (Show, Eq, Generic)
 instance Hashable PgDataTypeDescr where
   hashWithSalt salt (PgDataTypeDescrOid (Pg.Oid oid) dim) =
@@ -515,8 +515,8 @@ instance IsSql2003OrderingElementaryOLAPOperationsSyntax PgOrderingSyntax where
   nullsLastOrdering o = o { pgOrderingNullOrdering = Just PgNullOrderingNullsLast }
 
 instance IsSql92DataTypeSyntax PgDataTypeSyntax where
-  domainType nm = PgDataTypeSyntax (PgDataTypeDescrDomain nm) (pgQuotedIdentifier nm)
-                                   (domainType nm)
+  domainType mSchema nm = PgDataTypeSyntax (PgDataTypeDescrDomain (QualifiedName mSchema nm)) (pgQuotedIdentifier nm)
+                                   (domainType mSchema nm)
 
   charType prec charSet = PgDataTypeSyntax (PgDataTypeDescrOid (Pg.typoid Pg.bpchar) (Just (fromIntegral (fromMaybe 1 prec))))
                                            (emit "CHAR" <> pgOptPrec prec <> pgOptCharSet charSet)
@@ -1163,7 +1163,7 @@ defaultPgValueSyntax =
 
 -- Database Predicates
 
-data PgHasEnum = PgHasEnum T.Text {- Enumeration name -} [T.Text] {- enum values -}
+data PgHasEnum = PgHasEnum QualifiedName {- Enumeration name -} [T.Text] {- enum values -}
     deriving (Show, Eq, Generic)
 instance Hashable PgHasEnum
 instance DatabasePredicate PgHasEnum where
@@ -1353,16 +1353,16 @@ pgDropExtensionSyntax :: T.Text -> PgCommandSyntax
 pgDropExtensionSyntax extName =
   PgCommandSyntax PgCommandTypeDdl $ emit "DROP EXTENSION " <> pgQuotedIdentifier extName
 
-pgCreateEnumSyntax :: T.Text -> [PgValueSyntax] -> PgCommandSyntax
-pgCreateEnumSyntax enumName vals =
+pgCreateEnumSyntax :: QualifiedName -> [PgValueSyntax] -> PgCommandSyntax
+pgCreateEnumSyntax (QualifiedName mSchema enumName) vals =
     PgCommandSyntax PgCommandTypeDdl $
-    emit "CREATE TYPE " <> pgQuotedIdentifier enumName <> emit " AS ENUM(" <>
+    emit "CREATE TYPE " <> maybe mempty (\sch -> pgQuotedIdentifier sch <> emit ".") mSchema <> pgQuotedIdentifier enumName <> emit " AS ENUM(" <>
     pgSepBy (emit ", ") (fmap fromPgValue vals) <> emit ")"
 
-pgDropTypeSyntax :: T.Text -> PgCommandSyntax
-pgDropTypeSyntax typeName =
+pgDropTypeSyntax :: QualifiedName -> PgCommandSyntax
+pgDropTypeSyntax (QualifiedName mSchema typeName) =
     PgCommandSyntax PgCommandTypeDdl $
-    emit "DROP TYPE " <> pgQuotedIdentifier typeName
+    emit "DROP TYPE " <> maybe mempty (\sch -> pgQuotedIdentifier sch <> emit ".") mSchema <> pgQuotedIdentifier typeName
 
 -- -- * Pg-specific Q monad
 

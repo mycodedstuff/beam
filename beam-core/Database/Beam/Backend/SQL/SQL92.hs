@@ -213,7 +213,7 @@ class IsSql92ExtractFieldSyntax extractField where
   yearField :: extractField
 
 class IsSql92DataTypeSyntax dataType where
-  domainType :: Text -> dataType
+  domainType :: Maybe Text -> Text -> dataType
   charType :: Maybe Word -> Maybe Text -> dataType
   varCharType :: Maybe Word -> Maybe Text -> dataType
   nationalCharType :: Maybe Word -> dataType

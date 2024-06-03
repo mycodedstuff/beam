@@ -48,6 +48,7 @@ import qualified Data.GADT.Compare as D
 import           Data.Text (Text, unpack)
 import           Data.Typeable (Typeable, (:~:)( Refl ), eqT, typeRep, typeOf)
 import qualified Data.Vector as V
+import Database.Beam.Migrate.Types.Predicates (QualifiedName(QualifiedName))
 #if !MIN_VERSION_base(4, 11, 0)
 import           Data.Semigroup
 #endif
@@ -61,7 +62,7 @@ newtype BeamSerializedDataType
   deriving (Show, Eq)
 
 instance IsSql92DataTypeSyntax BeamSerializedDataType where
-  domainType nm = BeamSerializedDataType (object [ "domain" .= nm])
+  domainType sch nm = BeamSerializedDataType (object [ "domain" .= (QualifiedName sch nm)])
   charType prec collation =
     BeamSerializedDataType (object [ "char" .= object [ "prec" .= prec
                                                       , "collation" .= collation ]])
@@ -346,7 +347,8 @@ sql92Deserializers = mconcat
     deserializeSql92DataTypeObject =
       withObject "Sql92DataType" $ \o ->
       let (==>) = parseSub "Sql92DataType" o
-      in (domainType <$> o .: "domain") <|>
+      in ("domain" ==> \v -> do QualifiedName sch nm <- parseJSON (Object v)
+                                return $ domainType sch nm) <|>
          ("char" ==> \v ->
              charType <$> v .: "prec" <*> v .: "collation") <|>
          ("varchar" ==> \v ->

@@ -187,7 +187,7 @@ data DataType
   | DataTypeArray DataType Int
   | DataTypeRow [ (Text, DataType) ]
 
-  | DataTypeDomain Text
+  | DataTypeDomain (Maybe Text) Text
   deriving (Show, Eq)
 
 instance IsSql92DataTypeSyntax DataType where

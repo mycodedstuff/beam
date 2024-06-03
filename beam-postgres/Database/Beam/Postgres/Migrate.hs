@@ -309,11 +309,11 @@ pgDataTypeFromAtt _ oid pgMod
       in Just $ pgExpandDataType (Db.numeric precAndDecimal)
   | otherwise = Nothing
 
-pgEnumerationTypeFromAtt :: [ (T.Text, Pg.Oid, V.Vector T.Text) ] -> ByteString -> Pg.Oid -> Maybe Int32 -> Maybe PgDataTypeSyntax
+pgEnumerationTypeFromAtt :: [ (T.Text, T.Text, Pg.Oid, V.Vector T.Text) ] -> ByteString -> Pg.Oid -> Maybe Int32 -> Maybe PgDataTypeSyntax
 pgEnumerationTypeFromAtt enumData =
   let enumDataMap = HM.fromList [ (fromIntegral oid' :: Word64, -- Get around lack of Hashable for CUInt
-                                   PgDataTypeSyntax (PgDataTypeDescrDomain nm) (emit (TE.encodeUtf8 nm))
-                                          (pgDataTypeJSON (object [ "customType" .= nm ]))) | (nm, (Pg.Oid oid'), _) <- enumData ]
+                                   PgDataTypeSyntax (PgDataTypeDescrDomain $ Db.QualifiedName (Just sch) nm) (emit (TE.encodeUtf8 nm))
+                                          (pgDataTypeJSON (object [ "customType" .= Db.QualifiedName (Just sch) nm ]))) | (sch, nm, (Pg.Oid oid'), _) <- enumData ]
   in \_ (Pg.Oid oid) _ -> HM.lookup (fromIntegral oid) enumDataMap
 
 pgUnknownDataType :: Pg.Oid -> Maybe Int32 -> PgDataTypeSyntax
@@ -336,9 +336,9 @@ getDbConstraintsForSchemas subschemas conn =
      enumerationData <-
        Pg.query_ conn
          (fromString (unlines
-                      [ "SELECT t.typname, t.oid, array_agg(e.enumlabel ORDER BY e.enumsortorder)"
+                      [ "SELECT n.nspname, t.typname, t.oid, array_agg(e.enumlabel ORDER BY e.enumsortorder)"
                       , "FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid"
-                      , "GROUP BY t.typname, t.oid" ]))
+                      , "join pg_namespace n on t.typnamespace = n.oid GROUP BY t.typname, t.oid, n.nspname" ]))
 
      columnChecks <-
        fmap mconcat . forM tbls $ \(oid, schema, tbl) ->
@@ -375,7 +375,8 @@ getDbConstraintsForSchemas subschemas conn =
         Nothing -> Pg.query_ conn (fromString (primaryKeyQuery "null" "ns.nspname = any (current_schemas(false))"))
 
      let enumerations =
-           map (\(enumNm, _, options) -> Db.SomeDatabasePredicate (PgHasEnum enumNm (V.toList options))) enumerationData
+           map (\(enumSchema, enumNm, _, options) ->
+                     Db.SomeDatabasePredicate (PgHasEnum (Db.QualifiedName (Just enumSchema) enumNm) (V.toList options))) enumerationData
 
      pure (tblsExist ++ columnChecks ++ primaryKeys ++ enumerations)
 

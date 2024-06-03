@@ -177,13 +177,13 @@ instance HasQBuilder Postgres where
 -- * Instances for 'HasDefaultSqlDataType'
 
 instance HasDefaultSqlDataType Postgres ByteString where
-  defaultSqlDataType _ _ _ = pgByteaType
+  defaultSqlDataType _ _ _ _ _ = pgByteaType
 
 instance HasDefaultSqlDataType Postgres LocalTime where
-  defaultSqlDataType _ _ _ = timestampType Nothing False
+  defaultSqlDataType _ _ _ _ _ = timestampType Nothing False
 
 instance HasDefaultSqlDataType Postgres UTCTime where
-  defaultSqlDataType _ _ _ = timestampType Nothing True
+  defaultSqlDataType _ _ _ _ _ = timestampType Nothing True
 
 #if WORD_SIZE_IN_BITS == 32
 instance HasDefaultSqlDataType Postgres (SqlSerial Int) where
@@ -196,19 +196,19 @@ instance HasDefaultSqlDataType Postgres (SqlSerial Int) where
 #endif
 
 instance HasDefaultSqlDataType Postgres (SqlSerial Int16) where
-  defaultSqlDataType _ _ False = pgSmallSerialType
-  defaultSqlDataType _ _ _ = smallIntType
+  defaultSqlDataType _ _ False _ _ = pgSmallSerialType
+  defaultSqlDataType _ _ _ _ _ = smallIntType
 
 instance HasDefaultSqlDataType Postgres (SqlSerial Int32) where
-  defaultSqlDataType _ _ False = pgSerialType
-  defaultSqlDataType _ _ _ = intType
+  defaultSqlDataType _ _ False _ _ = pgSerialType
+  defaultSqlDataType _ _ _ _ _ = intType
 
 instance HasDefaultSqlDataType Postgres (SqlSerial Int64) where
-  defaultSqlDataType _ _ False = pgBigSerialType
-  defaultSqlDataType _ _ _ = bigIntType
+  defaultSqlDataType _ _ False _ _ = pgBigSerialType
+  defaultSqlDataType _ _ _ _ _ = bigIntType
 
 instance HasDefaultSqlDataType Postgres UUID where
-  defaultSqlDataType _ _ _ = pgUuidType
+  defaultSqlDataType _ _ _ _ _ = pgUuidType
 
 -- * Instances for 'HasSqlEqualityCheck'
 

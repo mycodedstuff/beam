@@ -62,7 +62,7 @@ instance ( HasDefaultSqlDataType be haskTy
   gDefaultTblSettingsChecks _ _ embedded =
     K1 (Const (nullableConstraint (Proxy @(NullableStatus haskTy)) (Proxy @be) ++
                defaultSqlDataTypeConstraints (Proxy @haskTy) (Proxy @be) embedded ++
-               [ FieldCheck (\tblNm nm -> p (TableHasColumn tblNm nm (defaultSqlDataType (Proxy @haskTy) (Proxy @be) embedded)
+               [ FieldCheck (\tblNm nm -> p (TableHasColumn tblNm nm (defaultSqlDataType (Proxy @haskTy) (Proxy @be) embedded tblNm nm)
                                               :: TableHasColumn be )) ]))
 
 instance ( Generic (embeddedTbl (Const [FieldCheck]))
@@ -116,6 +116,8 @@ class BeamMigrateSqlBackend be => HasDefaultSqlDataType be ty where
                      -> Proxy be       -- ^ Concrete representation of the backend
                      -> Bool           -- ^ 'True' if this field is in an embedded
                                        --   key or table, 'False' otherwise
+                     -> QualifiedName  -- ^ Qualified name of the table using the type
+                     -> Text           -- ^ Name of column using this type
                      -> BeamSqlBackendDataTypeSyntax be
 
   -- | Provide arbitrary constraints on a field of the requested type. See
@@ -150,38 +152,38 @@ instance ( BeamMigrateSqlBackend be, BeamSqlT071Backend be ) => HasDefaultSqlDat
 #endif
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Int32 where
-  defaultSqlDataType _ _ _ = intType
+  defaultSqlDataType _ _ _ _ _ = intType
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Int16 where
-  defaultSqlDataType _ _ _ = smallIntType
+  defaultSqlDataType _ _ _ _ _ = smallIntType
 instance ( BeamMigrateSqlBackend be, BeamSqlT071Backend be ) => HasDefaultSqlDataType be Int64 where
-    defaultSqlDataType _ _ _ = bigIntType
+    defaultSqlDataType _ _ _ _ _ = bigIntType
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Word where
-  defaultSqlDataType _ _ _ = numericType (Just (10, Nothing))
+  defaultSqlDataType _ _ _ _ _ = numericType (Just (10, Nothing))
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Word16 where
-  defaultSqlDataType _ _ _ = numericType (Just (5, Nothing))
+  defaultSqlDataType _ _ _ _ _ = numericType (Just (5, Nothing))
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Word32 where
-  defaultSqlDataType _ _ _ = numericType (Just (10, Nothing))
+  defaultSqlDataType _ _ _ _ _ = numericType (Just (10, Nothing))
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Word64 where
-  defaultSqlDataType _ _ _ = numericType (Just (20, Nothing))
+  defaultSqlDataType _ _ _ _ _ = numericType (Just (20, Nothing))
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Text where
-  defaultSqlDataType _ _ _ = varCharType Nothing Nothing
+  defaultSqlDataType _ _ _ _ _ = varCharType Nothing Nothing
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be SqlBitString where
-  defaultSqlDataType _ _ _ = varBitType Nothing
+  defaultSqlDataType _ _ _ _ _ = varBitType Nothing
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Double where
-  defaultSqlDataType _ _ _ = doubleType
+  defaultSqlDataType _ _ _ _ _ = doubleType
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Scientific where
-  defaultSqlDataType _ _ _ = numericType (Just (20, Just 10))
+  defaultSqlDataType _ _ _ _ _ = numericType (Just (20, Just 10))
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be Day where
-  defaultSqlDataType _ _ _ = dateType
+  defaultSqlDataType _ _ _ _ _ = dateType
 
 instance BeamMigrateSqlBackend be => HasDefaultSqlDataType be TimeOfDay where
-  defaultSqlDataType _ _ _ = timeType Nothing False
+  defaultSqlDataType _ _ _ _ _ = timeType Nothing False
 
 instance BeamMigrateSql99Backend be => HasDefaultSqlDataType be Bool where
-  defaultSqlDataType _ _ _ = booleanType
+  defaultSqlDataType _ _ _ _ _ = booleanType

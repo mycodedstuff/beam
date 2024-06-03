@@ -502,7 +502,7 @@ instance IsSql92CreateTableSyntax SqliteCreateTableSyntax where
          _ -> error "More than one column claims to be a primary key on this table"
 
 instance IsSql92DataTypeSyntax SqliteDataTypeSyntax where
-  domainType nm = SqliteDataTypeSyntax (quotedIdentifier nm) (domainType nm) (domainType nm) False
+  domainType sch nm = SqliteDataTypeSyntax (quotedIdentifier nm) (domainType sch nm) (domainType sch nm) False
   charType prec charSet = SqliteDataTypeSyntax (emit "CHAR" <> sqliteOptPrec prec <> sqliteOptCharSet charSet)
                                                (charType prec charSet)
                                                (charType prec charSet)

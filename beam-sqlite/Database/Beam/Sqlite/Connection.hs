@@ -272,15 +272,15 @@ HAS_SQLITE_EQUALITY_CHECK(Integer)
 HAS_SQLITE_EQUALITY_CHECK(Scientific)
 
 instance HasDefaultSqlDataType Sqlite (SqlSerial Int) where
-  defaultSqlDataType _ _ False = sqliteSerialType
-  defaultSqlDataType _ _ True = intType
+  defaultSqlDataType _ _ False _ _ = sqliteSerialType
+  defaultSqlDataType _ _ True _ _ = intType
 
 instance HasDefaultSqlDataType Sqlite BS.ByteString where
   -- TODO we should somehow allow contsraints based on backend
-  defaultSqlDataType _ _ _ = sqliteBlobType
+  defaultSqlDataType _ _ _ _ _ = sqliteBlobType
 
 instance HasDefaultSqlDataType Sqlite LocalTime where
-  defaultSqlDataType _ _ _ = timestampType Nothing False
+  defaultSqlDataType _ _ _ _ _ = timestampType Nothing False
 
 -- | URI syntax for use with 'withDbConnection'. See documentation for
 -- 'BeamURIOpeners' for more information.
