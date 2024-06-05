@@ -329,7 +329,7 @@ getDbConstraints = getDbConstraintsForSchemas Nothing
 getDbConstraintsForSchemas :: Maybe [String] -> Pg.Connection -> IO [ Db.SomeDatabasePredicate ]
 getDbConstraintsForSchemas subschemas conn =
   do tbls <- case subschemas of
-        Nothing -> Pg.query_ conn "SELECT cl.oid, null, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname = any (current_schemas(false)) and relkind='r'"
+        Nothing -> Pg.query_ conn "SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname = any (current_schemas(false)) and relkind='r'"
         Just ss -> Pg.query  conn "SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname IN ? and relkind='r'" (Pg.Only (Pg.In ss))
      let tblsExist = map (\(_, schema, tbl) -> Db.SomeDatabasePredicate (Db.TableExistsPredicate (Db.QualifiedName schema tbl))) tbls
 
@@ -360,7 +360,7 @@ getDbConstraintsForSchemas subschemas conn =
 
           pure (columnChecks ++ notNullChecks)
 
-     let primaryKeyQuery schemaPredicate nspnameClause = unlines [ "SELECT c.relname, " ++ schemaPredicate ++ ", array_agg(a.attname ORDER BY k.n ASC)"
+     let primaryKeyQuery nspnameClause = fromString $ unlines [ "SELECT c.relname, ns.nspname, array_agg(a.attname ORDER BY k.n ASC)"
                                    , "FROM pg_index i"
                                    , "CROSS JOIN unnest(i.indkey) WITH ORDINALITY k(attid, n)"
                                    , "JOIN pg_attribute a ON a.attnum=k.attid AND a.attrelid=i.indrelid"
@@ -371,14 +371,14 @@ getDbConstraintsForSchemas subschemas conn =
      primaryKeys <-
        map (\(relnm, schema, cols) -> Db.SomeDatabasePredicate (Db.TableHasPrimaryKey (Db.QualifiedName schema relnm) (V.toList cols))) <$>
        case subschemas of
-        Just ss -> Pg.query conn (fromString (primaryKeyQuery "ns.nspname" "ns.nspname = ?")) (Pg.Only $ Pg.In ss)
-        Nothing -> Pg.query_ conn (fromString (primaryKeyQuery "null" "ns.nspname = any (current_schemas(false))"))
+        Just ss -> Pg.query conn (primaryKeyQuery "ns.nspname = ?") (Pg.Only $ Pg.In ss)
+        Nothing -> Pg.query_ conn (primaryKeyQuery "ns.nspname = any (current_schemas(false))")
 
      let enumerations =
            map (\(enumSchema, enumNm, _, options) ->
                      Db.SomeDatabasePredicate (PgHasEnum (Db.QualifiedName (Just enumSchema) enumNm) (V.toList options))) enumerationData
 
-     pure (tblsExist ++ columnChecks ++ primaryKeys ++ enumerations)
+     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys)
 
 -- * Postgres-specific data types
 
