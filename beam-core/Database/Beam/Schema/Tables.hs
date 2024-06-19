@@ -51,6 +51,7 @@ module Database.Beam.Schema.Tables
 
     -- * Tables
     , Table(..), Beamable(..)
+    , TableIndex(..), IndexConstraint(..), IndexColumn(..) -- Table index
     , Retaggable(..), (:*:)(..) -- Reexported for use with 'alongsideTable'
     , defTblFieldSettings
     , tableValuesNeeded
@@ -80,8 +81,10 @@ import           Control.Arrow (first)
 import           Control.Monad.Identity
 import           Control.Monad.Writer hiding ((<>))
 
+import qualified Data.Aeson as A
 import           Data.Char (isUpper, toLower)
 import           Data.Foldable (fold)
+import           Data.Hashable
 import qualified Data.List.NonEmpty as NE
 import           Data.Monoid (Endo(..))
 import           Data.Proxy
@@ -163,7 +166,7 @@ type DatabaseModification f be db = db (EntityModification f be)
 --   types in 'f'). You usually want to use 'modifyTable' or another function to
 --   contstruct these for you.
 newtype EntityModification f be e = EntityModification (Endo (f e))
-  deriving (Monoid, Semigroup)
+  deriving (Monoid, Semigroup) -- Enabling DeriveAnyClass will break this at runtime, if needed use newtype deriving strategy here
 -- | A newtype wrapper around 'Columnar f a -> Columnar f ' (i.e., an
 --   endomorphism between 'Columnar's over 'f'). You usually want to use
 --   'fieldNamed' or the 'IsString' instance to rename the field, when 'f ~
@@ -590,6 +593,26 @@ type HasBeamFields table f g h = ( GZipTables f g h (Rep (table Exposed))
 --       `_blogPostTagline` is declared 'Maybe' so 'Nothing' will be stored as NULL in the database. `_blogPostImageGallery` will be allowed to be empty because it uses the 'Nullable' tag modifier.
 --     * `blogPostAuthor` references the `AuthorT` table (not given here) and is required.
 --     * `blogPostImageGallery` references the `ImageGalleryT` table (not given here), but this relation is not required (i.e., it may be 'Nothing'. See 'Nullable').
+
+data IndexConstraint
+  = UNIQUE
+  deriving (Generic, Show, Eq)
+
+instance Hashable IndexConstraint
+instance A.FromJSON IndexConstraint
+instance A.ToJSON IndexConstraint
+
+data TableIndex = TableIndex
+  { indexName :: T.Text -- ^ Index name
+  , indexConstriaint :: Maybe IndexConstraint -- ^ Constraint on index (e.g. unique indexes)
+  , indexColumns :: [Text] -- ^ Columns on which index is created
+  , indexPredicate :: Maybe Text -- ^ Predicate used for constructing partial indexes
+  } deriving (Generic, Show, Eq)
+
+-- | A type used to wrap columns for defining indexes
+data IndexColumn where
+  IC :: forall tbl a. TableField tbl a -> IndexColumn
+
 class (Typeable table, Beamable table, Beamable (PrimaryKey table)) => Table (table :: (Type -> Type) -> Type) where
 
     -- | A data type representing the types of primary keys for this table.
@@ -599,6 +622,10 @@ class (Typeable table, Beamable table, Beamable (PrimaryKey table)) => Table (ta
     -- | Given a table, this should return the PrimaryKey from the table. By keeping this polymorphic over column,
     --   we ensure that the primary key values come directly from the table (i.e., they can't be arbitrary constants)
     primaryKey :: table column -> PrimaryKey table column
+
+    -- | Give a table, this should return the list of indexes this table should have.
+    tableIndexes :: Text -> TableSettings table -> [TableIndex]
+    tableIndexes _ _ = []
 
 -- | Provides a number of introspection routines for the beam library. Allows us
 --   to "zip" tables with different column tags together. Always instantiate an

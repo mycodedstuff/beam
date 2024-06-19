@@ -135,3 +135,6 @@ newtype DomainCheck = DomainCheck (QualifiedName -> SomeDatabasePredicate)
 
 -- | A predicate that depends on the name of a table and one of its fields
 newtype FieldCheck = FieldCheck (QualifiedName -> Text -> SomeDatabasePredicate)
+
+-- | A predicate that depends on the name of a table as well as its fields
+newtype IndexCheck = IndexCheck (forall tbl. Table tbl => QualifiedName -> tbl (TableField tbl) -> [SomeDatabasePredicate])

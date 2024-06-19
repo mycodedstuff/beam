@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 
 -- | Checked database types
 module Database.Beam.Migrate.Types.CheckedEntities where
@@ -107,6 +108,7 @@ instance Beamable tbl => IsCheckedDatabaseEntity be (TableEntity tbl) where
                          => DatabaseEntityDescriptor be (TableEntity tbl)
                          -> [ TableCheck ]
                          -> tbl (Const [FieldCheck])
+                         -> IndexCheck
                          -> CheckedDatabaseEntityDescriptor be (TableEntity tbl)
 
   type CheckedDatabaseEntityDefaultRequirements be (TableEntity tbl)  =
@@ -115,13 +117,14 @@ instance Beamable tbl => IsCheckedDatabaseEntity be (TableEntity tbl) where
     , GMigratableTableSettings be (Rep (tbl Identity)) (Rep (tbl (Const [FieldCheck])))
     , BeamSqlBackend be )
 
-  unChecked f (CheckedDatabaseTable x cks fcks) = fmap (\x' -> CheckedDatabaseTable x' cks fcks) (f x)
-  collectEntityChecks (CheckedDatabaseTable dt tblChecks tblFieldChecks) =
+  unChecked f (CheckedDatabaseTable x cks fcks icks) = fmap (\x' -> CheckedDatabaseTable x' cks fcks icks) (f x)
+  collectEntityChecks (CheckedDatabaseTable dt tblChecks tblFieldChecks (IndexCheck indexChecks)) =
     map (\(TableCheck mkCheck) -> mkCheck (qname dt) (dbTableSettings dt)) tblChecks <>
     execWriter (zipBeamFieldsM (\(Columnar' fd) c@(Columnar' (Const fieldChecks)) ->
                                     tell (map (\(FieldCheck mkCheck) -> mkCheck (qname dt) (fd ^. fieldName)) fieldChecks) >>
                                     pure c)
                                (dbTableSettings dt) tblFieldChecks)
+    <> indexChecks (qname dt) (dbTableSettings dt)
 
   checkedDbEntityAuto tblTypeName =
     let tblChecks =
@@ -131,7 +134,12 @@ instance Beamable tbl => IsCheckedDatabaseEntity be (TableEntity tbl) where
                            in SomeDatabasePredicate (TableHasPrimaryKey tblName pkFields)) ]
 
         fieldChecks = to (gDefaultTblSettingsChecks (Proxy @be) (Proxy @(Rep (tbl Identity))) False)
-    in CheckedDatabaseTable (dbEntityAuto tblTypeName) tblChecks fieldChecks
+        indexChecks = IndexCheck (\tbl@(QualifiedName _ tblName) tblFields ->
+                                    map (\TableIndex {..} ->
+                                      SomeDatabasePredicate $
+                                        TableHasIndex tbl indexName indexConstriaint indexColumns (simplifyIndexPredicate <$> indexPredicate))
+                                    (tableIndexes tblName tblFields))
+    in CheckedDatabaseTable (dbEntityAuto tblTypeName) tblChecks fieldChecks indexChecks
 
 -- | Purposefully opaque type describing how to modify a table field. Used to
 -- parameterize the second argument to 'modifyCheckedTable'. For now, the only
@@ -189,7 +197,7 @@ modifyCheckedTable
   -> EntityModification (CheckedDatabaseEntity be db) be (TableEntity tbl)
 modifyCheckedTable renamer modFields =
   EntityModification $ Endo $
-  \(CheckedDatabaseEntity (CheckedDatabaseTable dt tblChecks fieldChecks) extraChecks) ->
+  \(CheckedDatabaseEntity (CheckedDatabaseTable dt tblChecks fieldChecks indexChecks) extraChecks) ->
     let fields' =
           runIdentity $
           zipBeamFieldsM (\(Columnar' (CheckedFieldModification fieldMod _)) (Columnar' field) ->
@@ -203,7 +211,7 @@ modifyCheckedTable renamer modFields =
     in CheckedDatabaseEntity (CheckedDatabaseTable
                                 (dt { dbTableCurrentName = renamer (dbTableCurrentName dt)
                                     , dbTableSettings = fields'})
-                                tblChecks fieldChecks') extraChecks
+                                tblChecks fieldChecks' indexChecks) extraChecks
 
 -- | Produce a table field modification that does nothing
 --

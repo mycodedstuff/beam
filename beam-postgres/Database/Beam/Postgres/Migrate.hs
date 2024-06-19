@@ -46,6 +46,7 @@ import           Database.Beam.Postgres.Syntax
 import           Database.Beam.Postgres.Types
 
 import           Database.Beam.Haskell.Syntax
+import           Database.Beam.Schema.Tables (IndexConstraint(..))
 
 import qualified Database.PostgreSQL.Simple as Pg
 import qualified Database.PostgreSQL.Simple.Types as Pg
@@ -377,8 +378,27 @@ getDbConstraintsForSchemas subschemas conn =
      let enumerations =
            map (\(enumSchema, enumNm, _, options) ->
                      Db.SomeDatabasePredicate (PgHasEnum (Db.QualifiedName (Just enumSchema) enumNm) (V.toList options))) enumerationData
+     let indexQuery nspnameClause = fromString $ unlines ["SELECT t.relname, n.nspname, i.relname, ix.indisunique,"
+                                                        , "array_agg(a.attname ORDER BY x.ord),"
+                                                        , "pg_get_expr(ix.indpred, ix.indrelid, true)"
+                                                        , "FROM pg_class t"
+                                                        , "JOIN pg_namespace n ON t.relnamespace = n.oid"
+                                                        , "JOIN pg_index ix ON t.oid = ix.indrelid"
+                                                        , "JOIN pg_class i ON i.oid = ix.indexrelid"
+                                                        , "JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS x(attnum, ord) ON true"
+                                                        , "JOIN pg_attribute a ON t.oid = a.attrelid AND a.attnum = x.attnum"
+                                                        , "WHERE " ++ nspnameClause ++ " and ix.indisprimary = false"
+                                                        , "GROUP BY t.relname, i.relname, ix.indpred, ix.indrelid, ix.indisunique, n.nspname"
+                                                        , "ORDER BY t.relname, i.relname"
+                                                        ]
+     indexChecks <- map (\(tblNm, schNm, nm, isUnique::Bool, cols, mPredicate) ->
+                              Db.SomeDatabasePredicate $
+                                Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) (Db.simplifyIndexPredicate <$> mPredicate)) <$>
+       case subschemas of
+        Just ss -> Pg.query conn (indexQuery "n.nspname = ?") (Pg.Only $ Pg.In ss)
+        Nothing -> Pg.query_ conn (indexQuery "n.nspname = any (current_schemas(false))")
 
-     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys)
+     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
 
 -- * Postgres-specific data types
 

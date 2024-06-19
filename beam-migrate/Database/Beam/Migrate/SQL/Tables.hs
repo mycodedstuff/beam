@@ -88,15 +88,16 @@ createTable newTblName tblSettings =
            case allBeamValues (\(Columnar' (TableFieldSchema name _ _)) -> name) (primaryKey tblSettings) of
              [] -> []
              cols -> [ TableCheck (\tblName _ -> SomeDatabasePredicate (TableHasPrimaryKey tblName cols)) ]
+         indexChecks = IndexCheck $ const $ const [] -- No indexes info when creating table
 
      upDown command Nothing
-     pure (CheckedDatabaseEntity (CheckedDatabaseTable (DatabaseTable Nothing newTblName newTblName tbl') tblChecks fieldChecks) [])
+     pure (CheckedDatabaseEntity (CheckedDatabaseTable (DatabaseTable Nothing newTblName newTblName tbl') tblChecks fieldChecks indexChecks) [])
 
 -- | Add a @DROP TABLE@ statement to this migration.
 dropTable :: BeamMigrateSqlBackend be
           => CheckedDatabaseEntity be db (TableEntity table)
           -> Migration be ()
-dropTable (CheckedDatabaseEntity (CheckedDatabaseTable dt _ _) _) =
+dropTable (CheckedDatabaseEntity (CheckedDatabaseTable dt _ _ _) _) =
   let command = dropTableCmd (dropTableSyntax (tableNameFromEntity dt))
   in upDown command Nothing
 
@@ -184,7 +185,7 @@ alterTable :: forall be db db' table table'
            => CheckedDatabaseEntity be db (TableEntity table)
            -> (table ColumnMigration -> TableMigration be (table' ColumnMigration))
            -> Migration be (CheckedDatabaseEntity be db' (TableEntity table'))
-alterTable (CheckedDatabaseEntity (CheckedDatabaseTable dt tblChecks tblFieldChecks) entityChecks) alterColumns =
+alterTable (CheckedDatabaseEntity (CheckedDatabaseTable dt tblChecks tblFieldChecks indexChecks) entityChecks) alterColumns =
  let initialTbl = runIdentity $
                   zipBeamFieldsM
                       (\(Columnar' fd :: Columnar' (TableField table) x)
@@ -211,7 +212,7 @@ alterTable (CheckedDatabaseEntity (CheckedDatabaseTable dt tblChecks tblFieldChe
     pure (CheckedDatabaseEntity (CheckedDatabaseTable
                                   (DatabaseTable tblSchema' (dbTableOrigName dt)
                                      tblNm' tbl')
-                                   tblChecks' fieldChecks') entityChecks)
+                                   tblChecks' fieldChecks' indexChecks) entityChecks)
 
 -- * Fields
 

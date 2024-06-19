@@ -10,11 +10,16 @@ import Database.Beam.Migrate.SQL.SQL92
 import Database.Beam.Migrate.SQL.Types
 import Database.Beam.Migrate.Serialization
 import Database.Beam.Migrate.Types.Predicates
+import Database.Beam.Schema.Tables
 
 import Data.Aeson ((.:), (.=), withObject, object)
 import Data.Aeson.Types (Parser, Value)
 import Data.Hashable (Hashable(..))
-import Data.Text (Text)
+import Data.Text (Text, unpack, intercalate, pack)
+
+import Data.Text.Encoding (encodeUtf8)
+
+import qualified FlatParse.Basic as FP
 import Data.Typeable (Typeable, cast)
 #if !MIN_VERSION_base(4, 11, 0)
 import Data.Semigroup
@@ -122,6 +127,44 @@ instance DatabasePredicate TableHasPrimaryKey where
     | Just (TableExistsPredicate tblNm') <- cast p' = tblNm' == tblNm
     | otherwise = False
 
+data TableHasIndex = TableHasIndex
+  { hasIndex_table :: QualifiedName
+  , hasIndex_name :: Text
+  , hasIndex_constraint :: Maybe IndexConstraint
+  , hasIndex_columns :: [Text]
+  , hasIndex_predicate :: Maybe Text
+  } deriving (Generic, Show, Eq)
+
+instance Hashable TableHasIndex
+
+instance DatabasePredicate TableHasIndex where
+  englishDescription (TableHasIndex tblName name constraint clause predicate) =
+    "Table "
+      <> show tblName
+      <> " has "
+      <> maybe mempty show constraint
+      <> " index "
+      <> unpack name
+      <> " on "
+      <> unpack (intercalate ", " clause)
+      <> maybe mempty ((" with predicate " <>) . unpack) predicate
+  predicateSpecificity _ = PredicateSpecificityAllBackends
+  serializePredicate (TableHasIndex tbl nm constraint columns predicate) =
+    object
+      [ "has-index"
+          .= object
+               [ "table" .= tbl
+               , "name" .= nm
+               , "constraint" .= constraint
+               , "columns" .= columns
+               , "predicate" .= predicate
+               ]
+      ]
+  predicateCascadesDropOn (TableHasIndex tblNm _ _ _ _) p'
+    | Just (TableHasIndex tblNm' _ _ _ _) <- cast p' = tblNm' == tblNm
+    -- | Just (TableHasColumn tblNm' colNm' _ :: TableHasColumn be) <- cast p' = tblNm' == tblNm && elem colNm' clause -- Would need to add `be` in TableHasIndex definition
+    | otherwise = False
+
 -- * Deserialization
 
 -- | 'BeamDeserializers' for all the predicates defined in this module
@@ -135,6 +178,7 @@ beamCheckDeserializers = mconcat
   , beamDeserializer (const deserializeTableHasPrimaryKeyPredicate)
   , beamDeserializer deserializeTableHasColumnPredicate
   , beamDeserializer deserializeTableColumnHasConstraintPredicate
+  , beamDeserializer (const deserializeTableHasIndexPredicate)
   ]
   where
     deserializeTableExistsPredicate :: Value -> Parser SomeDatabasePredicate
@@ -170,3 +214,91 @@ beamCheckDeserializers = mconcat
        fmap (id @(TableColumnHasConstraint be))
          (TableColumnHasConstraint <$> v' .: "table" <*> v' .: "column"
                                    <*> (beamDeserialize d =<< v' .: "constraint")))
+
+    deserializeTableHasIndexPredicate :: Value -> Parser SomeDatabasePredicate
+    deserializeTableHasIndexPredicate =
+      withObject "TableHasIndex" $ \v ->
+        v .: "has-index"
+          >>= withObject "TableHasIndex" (\v' ->
+                 SomeDatabasePredicate
+                   <$> (TableHasIndex
+                          <$> v' .: "table"
+                          <*> v' .: "name"
+                          <*> v' .: "constraint"
+                          <*> v' .: "columns"
+                          <*> v' .: "predicate"))
+
+-- * Utilities
+
+-- This function simplyfies predicate by removing extra brackets and type information
+-- TODO: Improve value parser
+simplifyIndexPredicate :: Text -> Text
+simplifyIndexPredicate predicate =
+  case FP.runParser parser $ encodeUtf8 predicate of
+    FP.OK a _ -> pack a
+    FP.Fail -> error $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
+    FP.Err err -> error $ "simplifyIndexPredicate: Parser failed with err: " ++ err ++ " for input " ++ unpack predicate
+  where
+    parseEntity :: Char -> FP.Parser String String
+    parseEntity quote = do
+      FP.skipMany $ FP.skipSatisfy (== ' ')
+      FP.skipMany $ FP.skipSatisfy (== '(')
+      ch <- FP.lookahead FP.anyChar
+      let isEntityQuoted = ch == quote
+      FP.optional_ $ FP.skipSatisfy (== quote)
+      entity <-
+        FP.some $ do
+          FP.satisfy FP.isLatinLetter
+            FP.<|> FP.satisfy FP.isDigit
+            FP.<|> FP.satisfy (== '_')
+      if isEntityQuoted
+        then FP.skipSatisfy (== quote)
+        else FP.optional_ $ FP.skipSatisfy (== quote)
+      FP.skipMany $ FP.skipSatisfy (== ')')
+      FP.optional_ $ do
+        FP.skipSatisfy (== ':')
+        FP.skipSatisfy (== ':')
+        FP.skipSome $ FP.skipSatisfy (/= ' ')
+        FP.skipMany $ FP.skipSatisfy (== ')')
+      return
+        $ if quote == '"'
+            then "\"" ++ entity ++ "\""
+            else if isEntityQuoted
+                   then [quote] ++ entity ++ [quote]
+                   else entity
+    parseClause :: FP.Parser String String
+    parseClause = do
+      columnName <- parseEntity '"'
+      FP.skipMany $ FP.skipSatisfy (== ' ')
+      operator <- FP.some $ FP.satisfy (/= ' ')
+      FP.skipMany $ FP.skipSatisfy (== ' ')
+      value <- parseEntity '\''
+      FP.skipMany $ FP.skipSatisfy (== ' ')
+      return $ columnName ++ " " ++ operator ++ " " ++ value
+    andParser :: FP.Parser String String
+    andParser = do
+      FP.skipSatisfy (== 'a') FP.<|> FP.skipSatisfy (== 'A')
+      FP.skipSatisfy (== 'n') FP.<|> FP.skipSatisfy (== 'N')
+      FP.skipSatisfy (== 'd') FP.<|> FP.skipSatisfy (== 'D')
+      return "AND"
+    orParser :: FP.Parser String String
+    orParser = do
+      FP.skipSatisfy (== 'o') FP.<|> FP.skipSatisfy (== 'O')
+      FP.skipSatisfy (== 'r') FP.<|> FP.skipSatisfy (== 'R')
+      return "OR"
+    parser :: FP.Parser String String
+    parser = do
+      cond1 <- parseClause
+      rest <-
+        FP.many
+          $ FP.withOption
+              (andParser FP.<|> orParser)
+              (\operator -> do
+                 cond2 <- parseClause
+                 return $ operator ++ " " ++ cond2)
+              FP.empty
+      FP.eof
+      return
+        $ case rest of
+            [] -> cond1
+            _rest -> cond1 ++ " " ++ unwords _rest

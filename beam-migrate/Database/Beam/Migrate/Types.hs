@@ -34,7 +34,7 @@ module Database.Beam.Migrate.Types
 
     -- * Entity checks
   , TableCheck(..), DomainCheck(..)
-  , FieldCheck(..)
+  , FieldCheck(..), IndexCheck(..)
 
     -- * Migrations
   , MigrationStep(..), MigrationSteps(..)
