@@ -13,13 +13,13 @@ import Database.Beam.Migrate.Types.Predicates
 import Database.Beam.Schema.Tables
 
 import Data.Aeson ((.:), (.=), withObject, object)
-import Data.Aeson.Types (Parser, Value)
+import Data.Aeson.Types as A (Parser, Value)
 import Data.Hashable (Hashable(..))
 import Data.Text (Text, unpack, intercalate, pack)
 
 import Data.Text.Encoding (encodeUtf8)
 
-import qualified FlatParse.Basic as FP
+import FlatParse.Basic as FP
 import Data.Typeable (Typeable, cast)
 #if !MIN_VERSION_base(4, 11, 0)
 import Data.Semigroup
@@ -181,12 +181,12 @@ beamCheckDeserializers = mconcat
   , beamDeserializer (const deserializeTableHasIndexPredicate)
   ]
   where
-    deserializeTableExistsPredicate :: Value -> Parser SomeDatabasePredicate
+    deserializeTableExistsPredicate :: Value -> A.Parser SomeDatabasePredicate
     deserializeTableExistsPredicate =
       withObject "TableExistPredicate" $ \v ->
       SomeDatabasePredicate <$> (TableExistsPredicate <$> v .: "table-exists")
 
-    deserializeTableHasPrimaryKeyPredicate :: Value -> Parser SomeDatabasePredicate
+    deserializeTableHasPrimaryKeyPredicate :: Value -> A.Parser SomeDatabasePredicate
     deserializeTableHasPrimaryKeyPredicate =
       withObject "TableHasPrimaryKey" $ \v ->
       v .: "has-primary-key" >>=
@@ -194,7 +194,7 @@ beamCheckDeserializers = mconcat
        SomeDatabasePredicate <$> (TableHasPrimaryKey <$> v' .: "table" <*> v' .: "columns"))
 
     deserializeTableHasColumnPredicate :: BeamDeserializers be'
-                                       -> Value -> Parser SomeDatabasePredicate
+                                       -> Value -> A.Parser SomeDatabasePredicate
     deserializeTableHasColumnPredicate d =
       withObject "TableHasColumn" $ \v ->
       v .: "has-column" >>=
@@ -205,7 +205,7 @@ beamCheckDeserializers = mconcat
                          <*> (beamDeserialize d =<< v' .: "type")))
 
     deserializeTableColumnHasConstraintPredicate :: BeamDeserializers be'
-                                                 -> Value -> Parser SomeDatabasePredicate
+                                                 -> Value -> A.Parser SomeDatabasePredicate
     deserializeTableColumnHasConstraintPredicate d =
       withObject "TableColumnHasConstraint" $ \v ->
       v .: "has-column-constraint" >>=
@@ -215,7 +215,7 @@ beamCheckDeserializers = mconcat
          (TableColumnHasConstraint <$> v' .: "table" <*> v' .: "column"
                                    <*> (beamDeserialize d =<< v' .: "constraint")))
 
-    deserializeTableHasIndexPredicate :: Value -> Parser SomeDatabasePredicate
+    deserializeTableHasIndexPredicate :: Value -> A.Parser SomeDatabasePredicate
     deserializeTableHasIndexPredicate =
       withObject "TableHasIndex" $ \v ->
         v .: "has-index"
@@ -234,32 +234,32 @@ beamCheckDeserializers = mconcat
 -- TODO: Improve value parser
 simplifyIndexPredicate :: Text -> Text
 simplifyIndexPredicate predicate =
-  case FP.runParser parser $ encodeUtf8 predicate of
-    FP.OK a _ -> pack a
-    FP.Fail -> error $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
-    FP.Err err -> error $ "simplifyIndexPredicate: Parser failed with err: " ++ err ++ " for input " ++ unpack predicate
+  case runParser parser $ encodeUtf8 predicate of
+    OK a _ -> pack a
+    Fail -> error $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
+    Err e -> error $ "simplifyIndexPredicate: Parser failed with err: " ++ e ++ " for input " ++ unpack predicate
   where
     parseEntity :: Char -> FP.Parser String String
     parseEntity quote = do
-      FP.skipMany $ FP.skipSatisfy (== ' ')
-      FP.skipMany $ FP.skipSatisfy (== '(')
-      ch <- FP.lookahead FP.anyChar
+      skipMany $ skipSatisfy (== ' ')
+      skipMany $ skipSatisfy (== '(')
+      ch <- lookahead anyChar
       let isEntityQuoted = ch == quote
-      FP.optional_ $ FP.skipSatisfy (== quote)
+      optional_ $ skipSatisfy (== quote)
       entity <-
-        FP.some $ do
-          FP.satisfy FP.isLatinLetter
-            FP.<|> FP.satisfy FP.isDigit
-            FP.<|> FP.satisfy (== '_')
+        some $ do
+          satisfy isLatinLetter
+            <|> satisfy isDigit
+            <|> satisfy (== '_')
       if isEntityQuoted
-        then FP.skipSatisfy (== quote)
-        else FP.optional_ $ FP.skipSatisfy (== quote)
-      FP.skipMany $ FP.skipSatisfy (== ')')
-      FP.optional_ $ do
-        FP.skipSatisfy (== ':')
-        FP.skipSatisfy (== ':')
-        FP.skipSome $ FP.skipSatisfy (/= ' ')
-        FP.skipMany $ FP.skipSatisfy (== ')')
+        then skipSatisfy (== quote)
+        else optional_ $ skipSatisfy (== quote)
+      skipMany $ skipSatisfy (== ')')
+      optional_ $ do
+        skipSatisfy (== ':')
+        skipSatisfy (== ':')
+        skipSome $ skipSatisfy (/= ' ')
+        skipMany $ skipSatisfy (== ')')
       return
         $ if quote == '"'
             then "\"" ++ entity ++ "\""
@@ -269,36 +269,47 @@ simplifyIndexPredicate predicate =
     parseClause :: FP.Parser String String
     parseClause = do
       columnName <- parseEntity '"'
-      FP.skipMany $ FP.skipSatisfy (== ' ')
-      operator <- FP.some $ FP.satisfy (/= ' ')
-      FP.skipMany $ FP.skipSatisfy (== ' ')
+      skipMany $ skipSatisfy (== ' ')
+      operator <- some $ satisfy (/= ' ')
+      skipMany $ skipSatisfy (== ' ')
       value <- parseEntity '\''
-      FP.skipMany $ FP.skipSatisfy (== ' ')
+      skipMany $ skipSatisfy (== ' ')
       return $ columnName ++ " " ++ operator ++ " " ++ value
     andParser :: FP.Parser String String
     andParser = do
-      FP.skipSatisfy (== 'a') FP.<|> FP.skipSatisfy (== 'A')
-      FP.skipSatisfy (== 'n') FP.<|> FP.skipSatisfy (== 'N')
-      FP.skipSatisfy (== 'd') FP.<|> FP.skipSatisfy (== 'D')
+      skipSatisfy (== 'a') <|> skipSatisfy (== 'A')
+      skipSatisfy (== 'n') <|> skipSatisfy (== 'N')
+      skipSatisfy (== 'd') <|> skipSatisfy (== 'D')
       return "AND"
     orParser :: FP.Parser String String
     orParser = do
-      FP.skipSatisfy (== 'o') FP.<|> FP.skipSatisfy (== 'O')
-      FP.skipSatisfy (== 'r') FP.<|> FP.skipSatisfy (== 'R')
+      skipSatisfy (== 'o') <|> skipSatisfy (== 'O')
+      skipSatisfy (== 'r') <|> skipSatisfy (== 'R')
       return "OR"
     parser :: FP.Parser String String
     parser = do
       cond1 <- parseClause
       rest <-
-        FP.many
-          $ FP.withOption
-              (andParser FP.<|> orParser)
+        many
+          $ withOption
+              (andParser <|> orParser)
               (\operator -> do
                  cond2 <- parseClause
                  return $ operator ++ " " ++ cond2)
-              FP.empty
-      FP.eof
+              empty
+      eof
       return
         $ case rest of
             [] -> cond1
             _rest -> cond1 ++ " " ++ unwords _rest
+
+#if !MIN_VERSION_flatparse(0,4,0)
+skipSatisfy :: (Char -> Bool) -> FP.Parser s ()
+skipSatisfy = satisfy_
+
+skipMany :: FP.Parser s a -> FP.Parser s ()
+skipMany = many_
+
+skipSome :: FP.Parser s a -> FP.Parser s ()
+skipSome = some_
+#endif

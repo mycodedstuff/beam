@@ -51,7 +51,7 @@ module Database.Beam.Schema.Tables
 
     -- * Tables
     , Table(..), Beamable(..)
-    , TableIndex(..), IndexConstraint(..), IndexColumn(..) -- Table index
+    , TableIndex(..), IndexConstraint(..) -- Table index
     , Retaggable(..), (:*:)(..) -- Reexported for use with 'alongsideTable'
     , defTblFieldSettings
     , tableValuesNeeded
@@ -608,10 +608,6 @@ data TableIndex = TableIndex
   , indexColumns :: [Text] -- ^ Columns on which index is created
   , indexPredicate :: Maybe Text -- ^ Predicate used for constructing partial indexes
   } deriving (Generic, Show, Eq)
-
--- | A type used to wrap columns for defining indexes
-data IndexColumn where
-  IC :: forall tbl a. TableField tbl a -> IndexColumn
 
 class (Typeable table, Beamable table, Beamable (PrimaryKey table)) => Table (table :: (Type -> Type) -> Type) where
 
