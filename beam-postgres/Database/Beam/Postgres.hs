@@ -67,6 +67,7 @@ module Database.Beam.Postgres
 
   , Pg.connectPostgreSQL, Pg.connect
   , Pg.close
+  , Pg(..)
 
   ) where
 
