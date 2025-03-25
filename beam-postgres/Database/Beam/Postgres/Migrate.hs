@@ -404,20 +404,22 @@ getDbConstraintsForSchemas subschemas conn = do
             Just ss -> executePgQueryAndWrap conn (indexQuery "n.nspname IN ?") $ Just (Pg.Only $ Pg.In ss)
             Nothing -> executePgQueryAndWrap conn (indexQuery "n.nspname = any (current_schemas(false))") mkToRowInstanceMaybe
     indexChecks <- mapM (\ind@(tblNm, schNm, nm, isUnique, cols, mPredicate) -> do
-                        simplifiedIndexPredicate <- CE.catch (simplifyIndexPredicateMaybe mPredicate) $ (\(e :: CE.SomeException) -> wrapException e ind)
+                        simplifiedIndexPredicate <- 
+                              case mPredicate of
+                                Nothing -> return Nothing
+                                Just predicate -> wrapException ind $ Db.simplifyIndexPredicate predicate
                         return $ Db.SomeDatabasePredicate $
                           Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) simplifiedIndexPredicate
                           ) indices
 
     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
     where
-      simplifyIndexPredicateMaybe :: Maybe T.Text -> IO (Maybe T.Text)
-      simplifyIndexPredicateMaybe Nothing = return Nothing
-      simplifyIndexPredicateMaybe (Just predicate) = return $ Just $ Db.simplifyIndexPredicate predicate
-
-      wrapException :: CE.SomeException -> (T.Text, T.Text, T.Text, Bool, V.Vector T.Text, Maybe T.Text) -> IO (Maybe T.Text)
-      wrapException e info  = 
-        error $ "unable to fetch index for : " <> show info <> " error : " <> show e
+      
+      wrapException :: (T.Text, T.Text, T.Text, Bool, V.Vector T.Text, Maybe T.Text) -> Either String T.Text -> IO (Maybe T.Text)
+      wrapException info eitherResp   =
+        case eitherResp of
+          Left err ->  error $ "unable to fetch index for : " <> show info <> " error : " <> err
+          Right res -> return $ Just res
 
 
 -- * Postgres-specific data types

@@ -137,9 +137,17 @@ instance Beamable tbl => IsCheckedDatabaseEntity be (TableEntity tbl) where
         indexChecks = IndexCheck (\tbl@(QualifiedName _ tblName) tblFields ->
                                     map (\TableIndex {..} ->
                                       SomeDatabasePredicate $
-                                        TableHasIndex tbl indexName indexConstriaint indexColumns (simplifyIndexPredicate <$> indexPredicate))
+                                        TableHasIndex tbl indexName indexConstriaint indexColumns (simplifiedIndexPredicate indexPredicate tblName indexName indexConstriaint indexColumns))
                                     (tableIndexes tblName tblFields))
     in CheckedDatabaseTable (dbEntityAuto tblTypeName) tblChecks fieldChecks indexChecks
+    where
+      simplifiedIndexPredicate :: Maybe Text -> Text -> Text -> Maybe IndexConstraint -> [Text] -> Maybe Text
+      simplifiedIndexPredicate Nothing _ _ _ _ = Nothing
+      simplifiedIndexPredicate (Just indPred) tblName indName indConstraint indCol  = 
+        case simplifyIndexPredicate indPred of
+          Left err -> error $ "unable to check index for : " <> (show (indPred,tblName,indName,indConstraint,indCol)) <> " error : " <> err
+          Right res -> Just res
+
 
 -- | Purposefully opaque type describing how to modify a table field. Used to
 -- parameterize the second argument to 'modifyCheckedTable'. For now, the only
