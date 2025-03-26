@@ -232,12 +232,12 @@ beamCheckDeserializers = mconcat
 
 -- This function simplyfies predicate by removing extra brackets and type information
 -- TODO: Improve value parser
-simplifyIndexPredicate :: Text -> Either String Text
+simplifyIndexPredicate :: Text -> Text
 simplifyIndexPredicate predicate =
   case runParser parser $ encodeUtf8 predicate of
-    OK a _ -> Right $ pack a
-    Fail -> Left $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
-    Err e -> Left $ "simplifyIndexPredicate: Parser failed with err: " ++ e ++ " for input " ++ unpack predicate
+    OK a _ -> pack a
+    Fail -> error $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
+    Err e -> error $ "simplifyIndexPredicate: Parser failed with err: " ++ e ++ " for input " ++ unpack predicate
   where
     parseEntity :: Char -> FP.Parser String String
     parseEntity quote = do

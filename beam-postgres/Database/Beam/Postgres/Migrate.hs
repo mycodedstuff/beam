@@ -404,22 +404,24 @@ getDbConstraintsForSchemas subschemas conn = do
             Just ss -> executePgQueryAndWrap conn (indexQuery "n.nspname IN ?") $ Just (Pg.Only $ Pg.In ss)
             Nothing -> executePgQueryAndWrap conn (indexQuery "n.nspname = any (current_schemas(false))") mkToRowInstanceMaybe
     indexChecks <- mapM (\ind@(tblNm, schNm, nm, isUnique, cols, mPredicate) -> do
-                        simplifiedIndexPredicate <- 
-                              case mPredicate of
-                                Nothing -> return Nothing
-                                Just predicate -> wrapException ind $ Db.simplifyIndexPredicate predicate
+                        simplifiedIndexPredicate <- simplifiedIndexPredicateExcpHandl mPredicate $ show ind
                         return $ Db.SomeDatabasePredicate $
                           Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) simplifiedIndexPredicate
                           ) indices
 
     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
     where
-      
-      wrapException :: (T.Text, T.Text, T.Text, Bool, V.Vector T.Text, Maybe T.Text) -> Either String T.Text -> IO (Maybe T.Text)
-      wrapException info eitherResp   =
+      simplifiedIndexPredicateExcpHandl :: Maybe T.Text -> String -> IO (Maybe T.Text)
+      simplifiedIndexPredicateExcpHandl Nothing _ = return Nothing
+      simplifiedIndexPredicateExcpHandl (Just predicate) ind = do
+        (eitherResp :: Either CE.SomeException T.Text) <- CE.try $ return $ Db.simplifyIndexPredicate predicate
         case eitherResp of
-          Left err ->  error $ "unable to fetch index for : " <> show info <> " error : " <> err
-          Right res -> return $ Just res
+          Left err -> wrapException ind $ show err
+          Right resp -> return $ Just resp
+
+      wrapException :: String -> String -> IO (Maybe T.Text)
+      wrapException info err = 
+        error $ "unable to fetch index for : " <> info <> " error : " <> err
 
 
 -- * Postgres-specific data types
