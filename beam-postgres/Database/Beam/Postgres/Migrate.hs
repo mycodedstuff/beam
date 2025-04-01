@@ -404,24 +404,22 @@ getDbConstraintsForSchemas subschemas conn = do
             Just ss -> executePgQueryAndWrap conn (indexQuery "n.nspname IN ?") $ Just (Pg.Only $ Pg.In ss)
             Nothing -> executePgQueryAndWrap conn (indexQuery "n.nspname = any (current_schemas(false))") mkToRowInstanceMaybe
     indexChecks <- mapM (\ind@(tblNm, schNm, nm, isUnique, cols, mPredicate) -> do
-                        simplifiedIndexPredicate <- simplifiedIndexPredicateExcpHandl mPredicate $ show ind
+                        simplifiedIndexPredicate <- 
+                              case mPredicate of
+                                Nothing -> return Nothing
+                                Just predicate -> wrapException ind $ Db.simplifyIndexPredicate predicate
                         return $ Db.SomeDatabasePredicate $
                           Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) simplifiedIndexPredicate
                           ) indices
 
     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
     where
-      simplifiedIndexPredicateExcpHandl :: Maybe T.Text -> String -> IO (Maybe T.Text)
-      simplifiedIndexPredicateExcpHandl Nothing _ = return Nothing
-      simplifiedIndexPredicateExcpHandl (Just predicate) ind = do
-        (eitherResp :: Either CE.SomeException T.Text) <- CE.try $ return $ Db.simplifyIndexPredicate predicate
+      
+      wrapException :: (T.Text, T.Text, T.Text, Bool, V.Vector T.Text, Maybe T.Text) -> Either String T.Text -> IO (Maybe T.Text)
+      wrapException info eitherResp   =
         case eitherResp of
-          Left err -> wrapException ind $ show err
-          Right resp -> return $ Just resp
-
-      wrapException :: String -> String -> IO (Maybe T.Text)
-      wrapException info err = 
-        error $ "unable to fetch index for : " <> info <> " error : " <> err
+          Left err ->  error $ "unable to fetch index for : " <> show info <> " error : " <> err
+          Right res -> return $ Just res
 
 
 -- * Postgres-specific data types

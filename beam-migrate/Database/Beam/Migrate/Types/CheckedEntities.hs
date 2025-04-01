@@ -22,8 +22,6 @@ import Data.String
 
 import GHC.Types
 import GHC.Generics
-import qualified Control.Exception as CE
-import qualified System.IO.Unsafe as SIU
 
 import Lens.Micro (Lens', (&), (^.), (.~), (%~))
 
@@ -145,10 +143,9 @@ instance Beamable tbl => IsCheckedDatabaseEntity be (TableEntity tbl) where
     where
       simplifiedIndexPredicate :: Maybe Text -> Text -> Text -> Maybe IndexConstraint -> [Text] -> Maybe Text
       simplifiedIndexPredicate Nothing _ _ _ _ = Nothing
-      simplifiedIndexPredicate (Just indPred) tblName indName indConstraint indCol  = do
-        let (eitherResp :: Either CE.SomeException Text) =  SIU.unsafePerformIO $  CE.try $ return $ simplifyIndexPredicate indPred
-        case eitherResp of
-          Left err -> error $ "unable to check index for : " <> (show (indPred,tblName,indName,indConstraint,indCol)) <> " error : " <> (show err)
+      simplifiedIndexPredicate (Just indPred) tblName indName indConstraint indCol  = 
+        case simplifyIndexPredicate indPred of
+          Left err -> error $ "unable to check index for : " <> (show (indPred,tblName,indName,indConstraint,indCol)) <> " error : " <> err
           Right res -> Just res
 
 
