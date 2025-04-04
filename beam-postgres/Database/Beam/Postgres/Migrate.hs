@@ -26,6 +26,8 @@ module Database.Beam.Postgres.Migrate
   , json, jsonb
   , smallserial, serial, bigserial
   , point, line, lineSegment, box
+  --  * execute and wrap exceptions
+  , executePgQueryAndWrap, mkToRowInstanceMaybe
   ) where
 
 import           Database.Beam.Backend.SQL
@@ -77,6 +79,9 @@ import           Data.Semigroup
 import           Data.Monoid (Endo(..))
 #endif
 import           Data.Word (Word64)
+import qualified Control.Exception as CE
+import qualified Database.PostgreSQL.Simple as PS
+import qualified Database.PostgreSQL.Simple.Internal as PSI
 
 -- | Top-level migration backend for use by @beam-migrate@ tools
 migrationBackend :: Tool.BeamMigrationBackend Postgres Pg
@@ -327,24 +332,27 @@ pgUnknownDataType oid@(Pg.Oid oid') pgMod =
 getDbConstraints :: Pg.Connection -> IO [ Db.SomeDatabasePredicate ]
 getDbConstraints = getDbConstraintsForSchemas Nothing
 
+-- DB Migration TODO add wrap and execute here
 getDbConstraintsForSchemas :: Maybe [String] -> Pg.Connection -> IO [ Db.SomeDatabasePredicate ]
-getDbConstraintsForSchemas subschemas conn =
-  do tbls <- case subschemas of
-        Nothing -> Pg.query_ conn "SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname = any (current_schemas(false)) and relkind='r'"
-        Just ss -> Pg.query  conn "SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname IN ? and relkind='r'" (Pg.Only (Pg.In ss))
-     let tblsExist = map (\(_, schema, tbl) -> Db.SomeDatabasePredicate (Db.TableExistsPredicate (Db.QualifiedName schema tbl))) tbls
+getDbConstraintsForSchemas subschemas conn = do
+    tbls <- case subschemas of
+        Nothing -> executePgQueryAndWrap conn ("SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname = any (current_schemas(false)) and relkind='r'") mkToRowInstanceMaybe
+        Just ss -> executePgQueryAndWrap conn "SELECT cl.oid, nspname, relname FROM pg_catalog.pg_class \"cl\" join pg_catalog.pg_namespace \"ns\" on (ns.oid = relnamespace) where nspname IN ? and relkind='r'" $ Just (Pg.Only (Pg.In ss))
+    let tblsExist = map (\(_, schema, tbl) -> Db.SomeDatabasePredicate (Db.TableExistsPredicate (Db.QualifiedName schema tbl))) tbls
 
-     enumerationData <-
-       Pg.query_ conn
-         (fromString (unlines
-                      [ "SELECT n.nspname, t.typname, t.oid, array_agg(e.enumlabel ORDER BY e.enumsortorder)"
-                      , "FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid"
-                      , "join pg_namespace n on t.typnamespace = n.oid GROUP BY t.typname, t.oid, n.nspname" ]))
+    enumerationData <- 
+          executePgQueryAndWrap conn
+              (fromString (unlines
+                            [ "SELECT n.nspname, t.typname, t.oid, array_agg(e.enumlabel ORDER BY e.enumsortorder)"
+                            , "FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid"
+                            , "join pg_namespace n on t.typnamespace = n.oid GROUP BY t.typname, t.oid, n.nspname" ]))
+              mkToRowInstanceMaybe    
 
-     columnChecks <-
-       fmap mconcat . forM tbls $ \(oid, schema, tbl) ->
-       do columns <- Pg.query conn "SELECT attname, atttypid, atttypmod, attnotnull, pg_catalog.format_type(atttypid, atttypmod) FROM pg_catalog.pg_attribute att WHERE att.attrelid=? AND att.attnum>0 AND att.attisdropped='f'"
-                       (Pg.Only (oid :: Pg.Oid))
+    columnChecks <-
+       fmap mconcat . forM tbls $ \(oid, schema, tbl) -> do
+          columns <- 
+                  executePgQueryAndWrap conn "SELECT attname, atttypid, atttypmod, attnotnull, pg_catalog.format_type(atttypid, atttypmod) FROM pg_catalog.pg_attribute att WHERE att.attrelid=? AND att.attnum>0 AND att.attisdropped='f'"
+                          $ Just (Pg.Only (oid :: Pg.Oid))
           let columnChecks = map (\(nm, typId :: Pg.Oid, typmod, _, typ :: ByteString) ->
                                     let typmod' = if typmod == -1 then Nothing else Just (typmod - 4)
 
@@ -361,7 +369,7 @@ getDbConstraintsForSchemas subschemas conn =
 
           pure (columnChecks ++ notNullChecks)
 
-     let primaryKeyQuery nspnameClause = fromString $ unlines [ "SELECT c.relname, ns.nspname, array_agg(a.attname ORDER BY k.n ASC)"
+    let primaryKeyQuery nspnameClause = fromString $ unlines [ "SELECT c.relname, ns.nspname, array_agg(a.attname ORDER BY k.n ASC)"
                                    , "FROM pg_index i"
                                    , "CROSS JOIN unnest(i.indkey) WITH ORDINALITY k(attid, n)"
                                    , "JOIN pg_attribute a ON a.attnum=k.attid AND a.attrelid=i.indrelid"
@@ -369,16 +377,16 @@ getDbConstraintsForSchemas subschemas conn =
                                    , "JOIN pg_namespace ns ON ns.oid=c.relnamespace"
                                    , "WHERE " ++ nspnameClause
                                    , "AND c.relkind='r' AND i.indisprimary GROUP BY relname, ns.nspname, i.indrelid" ]
-     primaryKeys <-
+    primaryKeys <-
        map (\(relnm, schema, cols) -> Db.SomeDatabasePredicate (Db.TableHasPrimaryKey (Db.QualifiedName schema relnm) (V.toList cols))) <$>
        case subschemas of
-        Just ss -> Pg.query conn (primaryKeyQuery "ns.nspname IN ?") (Pg.Only $ Pg.In ss)
-        Nothing -> Pg.query_ conn (primaryKeyQuery "ns.nspname = any (current_schemas(false))")
+        Just ss -> executePgQueryAndWrap conn (primaryKeyQuery "ns.nspname IN ?") $ Just (Pg.Only $ Pg.In ss)
+        Nothing -> executePgQueryAndWrap conn (primaryKeyQuery "ns.nspname = any (current_schemas(false))") mkToRowInstanceMaybe
 
-     let enumerations =
+    let enumerations =
            map (\(enumSchema, enumNm, _, options) ->
                      Db.SomeDatabasePredicate (PgHasEnum (Db.QualifiedName (Just enumSchema) enumNm) (V.toList options))) enumerationData
-     let indexQuery nspnameClause = fromString $ unlines ["SELECT t.relname, n.nspname, i.relname, ix.indisunique,"
+    let indexQuery nspnameClause = fromString $ unlines ["SELECT t.relname, n.nspname, i.relname, ix.indisunique,"
                                                         , "array_agg(a.attname ORDER BY x.ord),"
                                                         , "pg_get_expr(ix.indpred, ix.indrelid, true)"
                                                         , "FROM pg_class t"
@@ -391,14 +399,28 @@ getDbConstraintsForSchemas subschemas conn =
                                                         , "GROUP BY t.relname, i.relname, ix.indpred, ix.indrelid, ix.indisunique, n.nspname"
                                                         , "ORDER BY t.relname, i.relname"
                                                         ]
-     indexChecks <- map (\(tblNm, schNm, nm, isUnique::Bool, cols, mPredicate) ->
-                              Db.SomeDatabasePredicate $
-                                Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) (Db.simplifyIndexPredicate <$> mPredicate)) <$>
-       case subschemas of
-        Just ss -> Pg.query conn (indexQuery "n.nspname IN ?") (Pg.Only $ Pg.In ss)
-        Nothing -> Pg.query_ conn (indexQuery "n.nspname = any (current_schemas(false))")
+    (indices :: [(T.Text,T.Text,T.Text,Bool,V.Vector T.Text,Maybe T.Text)]) <- 
+          case subschemas of
+            Just ss -> executePgQueryAndWrap conn (indexQuery "n.nspname IN ?") $ Just (Pg.Only $ Pg.In ss)
+            Nothing -> executePgQueryAndWrap conn (indexQuery "n.nspname = any (current_schemas(false))") mkToRowInstanceMaybe
+    indexChecks <- mapM (\ind@(tblNm, schNm, nm, isUnique, cols, mPredicate) -> do
+                        simplifiedIndexPredicate <- 
+                              case mPredicate of
+                                Nothing -> return Nothing
+                                Just predicate -> wrapException ind $ Db.simplifyIndexPredicate predicate
+                        return $ Db.SomeDatabasePredicate $
+                          Db.TableHasIndex (Db.QualifiedName (Just schNm) tblNm) nm (if isUnique then Just UNIQUE else Nothing) (V.toList cols) simplifiedIndexPredicate
+                          ) indices
 
-     pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
+    pure (enumerations ++ tblsExist ++ columnChecks ++ primaryKeys ++ indexChecks)
+    where
+      
+      wrapException :: (T.Text, T.Text, T.Text, Bool, V.Vector T.Text, Maybe T.Text) -> Either String T.Text -> IO (Maybe T.Text)
+      wrapException info eitherResp   =
+        case eitherResp of
+          Left err ->  error $ "unable to fetch index for : " <> show info <> " error : " <> err
+          Right res -> return $ Just res
+
 
 -- * Postgres-specific data types
 
@@ -475,3 +497,17 @@ instance Db.FieldReturnType 'True 'False Postgres resTy a =>
 
 instance BeamSqlBackendHasSerial Postgres where
   genericSerial nm = Db.field nm serial PgHasDefault
+
+executePgQueryAndWrap :: (Pg.FromRow r, PS.ToRow q) => PSI.Connection -> PS.Query -> Maybe q -> IO [r]
+executePgQueryAndWrap conn query maybeQueryParams = do
+  (resp :: Either CE.SomeException r) <- 
+    case maybeQueryParams of
+      Nothing -> CE.try $ Pg.query_ conn query
+      Just qp -> CE.try $ Pg.query conn query qp
+  case resp of
+    Left err -> error $ "unable to execute query : "  <> show query <> " error : "<> show err
+    Right res -> return res
+
+
+mkToRowInstanceMaybe :: Maybe (PS.Only T.Text)
+mkToRowInstanceMaybe = Nothing

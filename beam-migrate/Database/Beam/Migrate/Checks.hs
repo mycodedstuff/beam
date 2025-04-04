@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- | Defines common 'DatabasePredicate's that are shared among backends
 module Database.Beam.Migrate.Checks where
@@ -15,7 +16,7 @@ import Database.Beam.Schema.Tables
 import Data.Aeson ((.:), (.=), withObject, object)
 import Data.Aeson.Types as A (Parser, Value)
 import Data.Hashable (Hashable(..))
-import Data.Text (Text, unpack, intercalate, pack)
+import Data.Text (Text, unpack, intercalate, pack, toLower)
 
 import Data.Text.Encoding (encodeUtf8)
 
@@ -26,6 +27,8 @@ import Data.Semigroup
 #endif
 
 import GHC.Generics (Generic)
+import Prelude hiding (EQ,LT,GT)
+import qualified Data.Maybe as Maybe
 
 -- * Table checks
 
@@ -230,14 +233,18 @@ beamCheckDeserializers = mconcat
 
 -- * Utilities
 
+
+data WhereClauseOperator = EQ | NOT_EQ | IN | LT | LTE | GT | GTE | BETWEEN | IS | NOT_SUPPORTED
+  deriving (Show,Eq)
+
 -- This function simplyfies predicate by removing extra brackets and type information
 -- TODO: Improve value parser
-simplifyIndexPredicate :: Text -> Text
+simplifyIndexPredicate :: Text -> Either String Text
 simplifyIndexPredicate predicate =
   case runParser parser $ encodeUtf8 predicate of
-    OK a _ -> pack a
-    Fail -> error $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
-    Err e -> error $ "simplifyIndexPredicate: Parser failed with err: " ++ e ++ " for input " ++ unpack predicate
+    OK a _ -> Right $ pack a
+    Fail -> Left $ "simplifyIndexPredicate: Parser failed for input " ++ unpack predicate
+    Err e -> Left $ "simplifyIndexPredicate: Parser failed with err: " ++ e ++ " for input " ++ unpack predicate
   where
     parseEntity :: Char -> FP.Parser String String
     parseEntity quote = do
@@ -266,33 +273,85 @@ simplifyIndexPredicate predicate =
             else if isEntityQuoted
                    then [quote] ++ entity ++ [quote]
                    else entity
+
+    parserWhereClauseOperator :: FP.Parser String (WhereClauseOperator, String)
+    parserWhereClauseOperator = do
+      operator <- some $ satisfy (/= ' ')
+      case operator of
+        "=" -> return (EQ,operator)
+        "<>" -> return (NOT_EQ,operator)
+        "<" -> return (LT,operator)
+        "<=" -> return (LTE,operator)
+        ">" -> return (GT,operator)
+        ">=" -> return (GTE,operator)
+        "IS" -> return (IS,operator)
+        "BETWEEN" -> return (BETWEEN,operator)
+        "IN" -> return (IN,operator)
+        x -> return (NOT_SUPPORTED,x)
+    
+    parseBetweenOperatorValue :: FP.Parser String String
+    parseBetweenOperatorValue = do
+      skipMany $ skipSatisfy (== ' ')
+      start <- some $ satisfy (/= ' ')
+      skipMany $ skipSatisfy (== ' ')
+      andKeyword <- some $ satisfy  (/= ' ')
+      skipMany $ skipSatisfy (== ' ')
+      end <- some $ satisfy (\x -> x `notElem` [' ',';'])
+      return $ start ++ " " ++ andKeyword ++ " " ++ end 
+
+    parseIsOperatorValue :: FP.Parser String String
+    parseIsOperatorValue = do
+      skipMany $ skipSatisfy (== ' ')
+      (maybeNotKeyword :: Maybe String) <- 
+        optional $ do
+          notKeyword <- some $ satisfy (/= ' ')
+          if (toLower $ pack notKeyword) == "not"
+            then return "NOT"
+            else FP.failed
+      skipMany $ skipSatisfy (== ' ')
+      value <- some $ satisfy (\x -> x `notElem` [' ',';'])
+      return $ Maybe.fromMaybe "" maybeNotKeyword <> value
+
+    parseWhereClauseValue :: (WhereClauseOperator, String) -> FP.Parser String String
+    parseWhereClauseValue (opr,oprString)
+      | opr  == BETWEEN = parseBetweenOperatorValue
+      | opr == IS = parseIsOperatorValue
+      | opr == NOT_SUPPORTED =  FP.err $ "does not support this operator = " <> oprString
+      | otherwise = parseEntity '\''
+
     parseClause :: FP.Parser String String
     parseClause = do
       columnName <- parseEntity '"'
       skipMany $ skipSatisfy (== ' ')
-      operator <- some $ satisfy (/= ' ')
+      operator <- parserWhereClauseOperator
       skipMany $ skipSatisfy (== ' ')
-      value <- parseEntity '\''
+      value <- parseWhereClauseValue operator
       skipMany $ skipSatisfy (== ' ')
-      return $ columnName ++ " " ++ operator ++ " " ++ value
+      return $ columnName ++ " " ++ (snd operator) ++ " " ++ value
+
     andParser :: FP.Parser String String
     andParser = do
       skipSatisfy (== 'a') <|> skipSatisfy (== 'A')
       skipSatisfy (== 'n') <|> skipSatisfy (== 'N')
       skipSatisfy (== 'd') <|> skipSatisfy (== 'D')
       return "AND"
+
     orParser :: FP.Parser String String
     orParser = do
       skipSatisfy (== 'o') <|> skipSatisfy (== 'O')
       skipSatisfy (== 'r') <|> skipSatisfy (== 'R')
       return "OR"
+
+    parseBooleanOperators :: FP.Parser String String
+    parseBooleanOperators = andParser <|> orParser
+
     parser :: FP.Parser String String
     parser = do
       cond1 <- parseClause
       rest <-
         many
           $ withOption
-              (andParser <|> orParser)
+              parseBooleanOperators
               (\operator -> do
                  cond2 <- parseClause
                  return $ operator ++ " " ++ cond2)
