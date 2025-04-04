@@ -46,7 +46,8 @@ module Database.Beam.Migrate.Types
   , executeMigration, eraseMigrationType, migrationStep
   , upDown, migrationDataLoss
 
-  , migrateScript, evaluateDatabase, stepNames ) where
+  , migrateScript, evaluateDatabase, stepNames
+  , qnameAsText ) where
 
 import Database.Beam.Backend.SQL
 import Database.Beam.Migrate.Types.CheckedEntities
